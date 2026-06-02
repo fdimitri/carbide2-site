@@ -1,0 +1,20 @@
+---
+interface Props {
+  href?: string;
+  variant?: 'primary' | 'ghost';
+  external?: boolean;
+}
+const { href, variant = 'primary', external = false } = Astro.props;
+const base =
+  'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-mono text-sm font-medium transition-all';
+const styles =
+  variant === 'primary'
+    ? 'bg-carbide-green text-carbide-bg hover:bg-carbide-greenDark hover:shadow-glow'
+    : 'border border-carbide-line bg-carbide-panel text-carbide-text hover:border-carbide-green/60 hover:text-carbide-green';
+const Tag: any = href ? 'a' : 'button';
+const extraProps = external ? { rel: 'noopener', target: '_blank' } : {};
+---
+
+<Tag href={href} class:list={[base, styles]} {...extraProps}>
+  <slot />
+</Tag>

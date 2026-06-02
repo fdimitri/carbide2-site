@@ -1,0 +1,104 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    @apply bg-carbide-bg text-carbide-text antialiased;
+    font-family: theme('fontFamily.sans');
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply min-h-screen relative;
+    background-image:
+      radial-gradient(ellipse at top, rgba(127, 255, 154, 0.06), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(92, 246, 255, 0.04), transparent 60%);
+  }
+
+  /* Subtle CRT scanline overlay (disabled for reduced-motion users). */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    background-image: theme('backgroundImage.scanlines');
+    mix-blend-mode: overlay;
+    opacity: 0.5;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body::after { display: none; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  ::selection {
+    @apply bg-carbide-green/30 text-carbide-text;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-carbide-green/70 ring-offset-2 ring-offset-carbide-bg rounded-sm;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-mono tracking-tight text-carbide-text;
+  }
+
+  a {
+    @apply text-carbide-green hover:text-carbide-greenDark transition-colors;
+  }
+
+  code {
+    @apply font-mono text-sm;
+  }
+}
+
+@layer components {
+  .container-narrow {
+    @apply mx-auto w-full max-w-3xl px-6;
+  }
+  .container-wide {
+    @apply mx-auto w-full max-w-6xl px-6;
+  }
+  .glow-text {
+    text-shadow: 0 0 8px rgba(127, 255, 154, 0.55);
+  }
+  .prose-carbide {
+    @apply max-w-none text-carbide-text;
+  }
+  .prose-carbide h1,
+  .prose-carbide h2,
+  .prose-carbide h3 {
+    @apply font-mono text-carbide-green mt-10 mb-4;
+  }
+  .prose-carbide h1 { @apply text-3xl; }
+  .prose-carbide h2 { @apply text-2xl border-b border-carbide-line pb-2; }
+  .prose-carbide h3 { @apply text-xl; }
+  .prose-carbide p { @apply leading-relaxed my-4; }
+  .prose-carbide ul { @apply list-disc list-outside ml-6 space-y-1 my-4; }
+  .prose-carbide ol { @apply list-decimal list-outside ml-6 space-y-1 my-4; }
+  .prose-carbide blockquote {
+    @apply border-l-2 border-carbide-green/60 pl-4 italic text-carbide-muted my-6;
+  }
+  .prose-carbide pre {
+    @apply bg-carbide-surface border border-carbide-line rounded-md p-4 overflow-x-auto my-6 text-sm;
+  }
+  .prose-carbide code:not(pre code) {
+    @apply bg-carbide-panel border border-carbide-line rounded px-1.5 py-0.5 text-carbide-amber;
+  }
+  .prose-carbide a { @apply underline decoration-carbide-green/40 underline-offset-4; }
+  .prose-carbide hr { @apply border-carbide-line my-10; }
+}

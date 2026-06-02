@@ -1,0 +1,50 @@
+---
+import Base from '@/layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  const tagSet = new Set<string>();
+  posts.forEach((p) => (p.data.tags ?? []).forEach((t) => tagSet.add(t)));
+  return Array.from(tagSet).map((tag) => ({
+    params: { tag },
+    props: {
+      tag,
+      posts: posts
+        .filter((p) => p.data.tags?.includes(tag))
+        .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()),
+    },
+  }));
+}
+
+const { tag, posts } = Astro.props;
+---
+
+<Base title={`#${tag} — CARB/IDE2 devblog`} description={`Posts tagged #${tag}.`}>
+  <section class="container-narrow py-16">
+    <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// tag</p>
+    <h1 class="mt-2 font-mono text-4xl font-bold text-carbide-green glow-text">#{tag}</h1>
+    <p class="mt-2 font-mono text-sm text-carbide-muted">
+      {posts.length} post{posts.length === 1 ? '' : 's'} ·
+      <a href="/blog" class="ml-1">← All posts</a>
+    </p>
+
+    <ul class="mt-8 divide-y divide-carbide-line">
+      {posts.map((post) => (
+        <li class="py-6">
+          <a href={`/blog/${post.slug}`} class="group block">
+            <p class="font-mono text-xs text-carbide-muted">
+              <time datetime={post.data.pubDate.toISOString()}>
+                {post.data.pubDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </time>
+            </p>
+            <h2 class="mt-1 font-mono text-xl text-carbide-green group-hover:glow-text">
+              {post.data.title}
+            </h2>
+            <p class="mt-2 text-carbide-muted">{post.data.description}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+</Base>

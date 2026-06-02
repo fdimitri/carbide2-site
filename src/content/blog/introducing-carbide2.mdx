@@ -1,0 +1,41 @@
+---
+title: 'Introducing CARB/IDE2'
+description: 'A browser IDE where the editor, the terminal, the filesystem, and the chat all live on the server — and so does the collaboration.'
+pubDate: 2026-06-02
+author: 'frankd'
+tags: ['announcement', 'overview']
+draft: true
+---
+
+import Callout from '@/components/ui/Callout.astro';
+
+## Why this exists
+
+For the last decade, "cloud IDE" has mostly meant *hosted SaaS that happens to
+run an editor*. That's fine, but it skips the part that matters: when the
+editor, the terminal, and the filesystem all live on the server, every
+collaborator sees the same thing at the same time. No "pull my branch", no
+"can you screen-share?", no Slack tab on a second monitor.
+
+CARB/IDE2 is the opposite of hosted SaaS. It's a self-hostable Rails 8.1 app
+under GPLv3 that you run on your own box. The browser is a thin client — every
+keystroke in a terminal, every file write, every chat message is a server-side
+event, broadcast to everyone in the room.
+
+<Callout tone="info">
+This is a tech demo. APIs will move. Don't put production data in it yet.
+</Callout>
+
+## What's in v0
+
+- A browser-side editor wired to a server-side filesystem in Postgres.
+- Real PTYs on the server, streamed to every connected viewer.
+- An IRC-style chat with persistent history, per project.
+- Git integration (clone / branch / commit / push) inside the workspace.
+- A Helm chart for k3d/k3s and a Docker Compose setup for the lazy.
+
+## What's next
+
+WebRTC for voice + video, a proper docs site, plugin hooks for language
+servers, and a public sandbox-only demo (one that doesn't expose a real shell
+to the open internet — see [the about page](/about) for the threat model).

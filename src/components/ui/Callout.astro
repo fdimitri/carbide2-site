@@ -1,0 +1,17 @@
+---
+interface Props { tone?: 'info' | 'warn' | 'danger' }
+const { tone = 'info' } = Astro.props;
+const tones = {
+  info: 'border-carbide-cyan/40 text-carbide-cyan',
+  warn: 'border-carbide-amber/50 text-carbide-amber',
+  danger: 'border-carbide-red/50 text-carbide-red',
+};
+---
+<aside
+  class:list={[
+    'my-6 rounded-md border bg-carbide-panel/60 p-4 font-mono text-sm',
+    tones[tone],
+  ]}
+>
+  <slot />
+</aside>

@@ -1,0 +1,46 @@
+---
+import Base from '@/layouts/Base.astro';
+---
+
+<Base title="About — CARB/IDE2" description="Why CARB/IDE2 exists, who builds it, and how it's licensed.">
+  <article class="container-narrow py-16 prose-carbide">
+    <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// about</p>
+    <h1>What is CARB/IDE2?</h1>
+    <p>
+      CARB/IDE2 is an open-source, browser-based collaborative IDE. It moves the
+      whole development environment — files, terminals, chat — onto a server you
+      control, so everyone working on a project sees the same thing at the same time.
+    </p>
+
+    <h2>Why build another IDE?</h2>
+    <p>
+      Most "cloud IDEs" are hosted SaaS — convenient, but you don't own the
+      infrastructure, the data, or the protocol. CARB/IDE2 is the opposite:
+      self-hostable, GPLv3-licensed, and built on boring, durable tools (Ruby 4.0,
+      Rails 8.1, Postgres, WebSockets). If it runs on your hardware, your data
+      stays on your hardware.
+    </p>
+
+    <h2>Tech stack</h2>
+    <ul>
+      <li><strong>Server</strong>: Ruby 4.0 + Rails 8.1, Postgres, ActionCable / custom WebSocket layer.</li>
+      <li><strong>Worker</strong>: per-project process supervising PTYs and broadcasting frames.</li>
+      <li><strong>Client</strong>: TypeScript + xterm.js + a custom editor surface.</li>
+      <li><strong>Filesystem</strong>: stored in Postgres, watched via INOTIFY-style change events.</li>
+      <li><strong>Deploy</strong>: works on plain Linux, Docker Compose, or Kubernetes (k3d-friendly).</li>
+    </ul>
+
+    <h2>License</h2>
+    <p>
+      CARB/IDE2 is released under the <a href="https://www.gnu.org/licenses/gpl-3.0.html">GNU GPLv3</a>.
+      Run it, fork it, modify it. If you distribute changes, share them.
+    </p>
+
+    <h2>Status</h2>
+    <p>
+      This is an early tech demo. APIs will move, features will land and leave,
+      and you should not put production data in it yet. Follow the
+      <a href="/blog">devblog</a> for updates.
+    </p>
+  </article>
+</Base>

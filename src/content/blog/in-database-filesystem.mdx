@@ -1,0 +1,41 @@
+---
+title: 'Why an in-database filesystem?'
+description: 'Putting project files in Postgres sounds weird until you try to replicate a workspace, undo a delete, or fan out change events.'
+pubDate: 2026-06-02
+author: 'frankd'
+tags: ['design', 'storage']
+draft: true
+---
+
+The first time someone hears "the filesystem lives in Postgres", the reaction
+is usually a slow blink. *Why?* Disks exist. ext4 exists. Why introduce a
+database between the user and their files?
+
+## The boring answer: events
+
+A collaborative IDE has to fan out file changes to every connected client in
+real time. On a host filesystem, that means watching inotify, debouncing,
+mapping paths to subscribers, and racing against the kernel.
+
+In Postgres, it's `LISTEN/NOTIFY` on a row update. The same transaction that
+writes the file also tells every subscriber it changed. No watcher process.
+No race. No "the file got modified twice but inotify only fired once".
+
+## The other boring answer: snapshots
+
+A workspace is a row set. Cloning a project is `INSERT ... SELECT`. Snapshots
+are a `created_at` filter. Replication is whatever your Postgres is already
+doing for the rest of your data. Undelete is `WHERE deleted_at IS NULL`
+flipped to `IS NOT NULL` for five seconds.
+
+You don't have to invent a versioned filesystem. You inherit one.
+
+## The catch
+
+You pay for it in throughput. Large binary blobs are still better off in
+object storage with a reference in the DB — and that's exactly what CARB/IDE2
+does past a size threshold. The win isn't *every byte goes in Postgres*. The
+win is *the metadata, the small files, and the change events all live where
+your transactions live*.
+
+More on the schema in a future post.

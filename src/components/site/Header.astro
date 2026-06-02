@@ -1,0 +1,112 @@
+---
+const navLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/features', label: 'Features' },
+  { href: '/blog', label: 'Devblog' },
+  { href: '/about', label: 'About' },
+  { href: '/docs', label: 'Docs' },
+];
+const path = Astro.url.pathname;
+const isActive = (href: string) =>
+  href === '/' ? path === '/' : path === href || path.startsWith(href + '/');
+---
+
+<header
+  class="sticky top-0 z-40 border-b border-carbide-line bg-carbide-bg/80 backdrop-blur"
+>
+  <div class="container-wide flex h-14 items-center justify-between gap-6">
+    <a href="/" class="group flex items-center gap-2 font-mono text-sm font-bold">
+      <span class="text-carbide-green glow-text">CARB/IDE2</span>
+      <span class="hidden text-carbide-muted sm:inline">›</span>
+      <span class="hidden text-carbide-muted group-hover:text-carbide-text sm:inline">
+        a collaborative browser IDE
+      </span>
+    </a>
+
+    <nav aria-label="Primary" class="hidden md:block">
+      <ul class="flex items-center gap-1 font-mono text-sm">
+        {navLinks.map(({ href, label }) => (
+          <li>
+            <a
+              href={href}
+              aria-current={isActive(href) ? 'page' : undefined}
+              class:list={[
+                'rounded px-3 py-1.5 transition-colors',
+                isActive(href)
+                  ? 'text-carbide-green'
+                  : 'text-carbide-muted hover:text-carbide-text',
+              ]}
+            >
+              {label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <div class="flex items-center gap-3">
+      <a
+        href="https://github.com/carbide2/carbide2-server"
+        rel="noopener"
+        target="_blank"
+        class="hidden font-mono text-xs text-carbide-muted hover:text-carbide-green sm:inline"
+      >
+        GitHub ↗
+      </a>
+      <button
+        id="mobile-nav-toggle"
+        type="button"
+        class="md:hidden rounded border border-carbide-line bg-carbide-panel px-2 py-1 font-mono text-xs"
+        aria-expanded="false"
+        aria-controls="mobile-nav"
+      >
+        Menu
+      </button>
+    </div>
+  </div>
+
+  <nav
+    id="mobile-nav"
+    aria-label="Mobile"
+    hidden
+    class="border-t border-carbide-line bg-carbide-bg md:hidden"
+  >
+    <ul class="container-wide flex flex-col py-3 font-mono text-sm">
+      {navLinks.map(({ href, label }) => (
+        <li>
+          <a
+            href={href}
+            class:list={[
+              'block rounded px-3 py-2',
+              isActive(href)
+                ? 'text-carbide-green'
+                : 'text-carbide-muted hover:text-carbide-text',
+            ]}
+          >
+            {label}
+          </a>
+        </li>
+      ))}
+      <li>
+        <a
+          href="https://github.com/carbide2/carbide2-server"
+          rel="noopener"
+          target="_blank"
+          class="block px-3 py-2 text-carbide-muted hover:text-carbide-green"
+        >
+          GitHub ↗
+        </a>
+      </li>
+    </ul>
+  </nav>
+</header>
+
+<script>
+  const btn = document.getElementById('mobile-nav-toggle');
+  const nav = document.getElementById('mobile-nav');
+  btn?.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!open));
+    if (nav) nav.hidden = open;
+  });
+</script>

@@ -1,0 +1,23 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="mt-24 border-t border-carbide-line bg-carbide-surface/40">
+  <div class="container-wide flex flex-col gap-6 py-10 font-mono text-sm text-carbide-muted sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <p class="text-carbide-green glow-text">CARB/IDE2</p>
+      <p class="mt-1 text-xs">Collaborative browser IDE — open source, GPLv3.</p>
+      <p class="mt-1 text-xs">© {year} CARB/IDE2 contributors.</p>
+    </div>
+    <nav aria-label="Footer" class="grid grid-cols-2 gap-x-10 gap-y-2 text-xs sm:grid-cols-3">
+      <a href="/features">Features</a>
+      <a href="/blog">Devblog</a>
+      <a href="/about">About</a>
+      <a href="/docs">Docs</a>
+      <a href="/rss.xml">RSS</a>
+      <a href="https://github.com/carbide2/carbide2-server" rel="noopener" target="_blank">
+        GitHub ↗
+      </a>
+    </nav>
+  </div>
+</footer>

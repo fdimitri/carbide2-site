@@ -1,0 +1,23 @@
+---
+import Base from '@/layouts/Base.astro';
+import Button from '@/components/ui/Button.astro';
+---
+
+<Base title="Docs — CARB/IDE2" description="Docs currently live in the GitHub repository.">
+  <section class="container-narrow py-24 text-center">
+    <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// docs</p>
+    <h1 class="mt-2 font-mono text-3xl text-carbide-text">Docs live in the repo (for now).</h1>
+    <p class="mt-4 text-carbide-muted">
+      A standalone docs site is on the roadmap. Until then, the most up-to-date
+      install, deploy, and contribution guides ship in the server repository.
+    </p>
+    <div class="mt-8 flex justify-center gap-3">
+      <Button href="https://github.com/carbide2/carbide2-server#readme" external>
+        Read the README →
+      </Button>
+      <Button href="https://github.com/carbide2/carbide2-server/tree/main/INSTALL.md" external variant="ghost">
+        INSTALL.md
+      </Button>
+    </div>
+  </section>
+</Base>
