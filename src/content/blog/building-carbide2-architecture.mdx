@@ -99,11 +99,14 @@ injected by whichever Rails app served it.
 The first time someone hears "files in Postgres" they blink slowly. The reasons
 are practical:
 
-**Events are free.** In a collaborative editor, file changes need to fan out to
-every connected client immediately. On a host filesystem that means inotify,
-debouncing, path-to-subscriber mapping, and race conditions. In Postgres, a row
-update triggers a `LISTEN/NOTIFY`. The same transaction that writes the file
-tells subscribers it changed.
+**Fan-out is free.** In a collaborative editor, file changes need to reach every
+connected client immediately. Carbide keeps the inotify watcher (`VfsWatcher`,
+backed by `rb-inotify`), the Postgres write, and the WebSocket clients all inside
+the same EventMachine process. When a file changes on disk, the inotify event
+fires in the EM loop, a `FileChange` row is appended, and the same `broadcast`
+method that PTY output uses fans the update to every session. No inter-process
+messaging, no polling, no external pub/sub: the subscriber list *is* the
+in-memory client table.
 
 **Snapshots are cheap.** Cloning a project is `INSERT ... SELECT`. Revision
 history is a `WHERE created_at` filter on `file_changes`. Replication is
