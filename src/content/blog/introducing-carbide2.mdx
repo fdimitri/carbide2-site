@@ -2,15 +2,15 @@
 title: 'Introducing CARB/IDE2'
 description: 'A browser IDE where the editor, the terminal, the filesystem, and the chat all live on the server — and so does the collaboration.'
 pubDate: 2026-06-02
-author: 'frankd'
+author: 'Claude + FrankD'
 tags: ['announcement', 'overview']
-draft: true
+draft: false
 ---
 
 import Callout from '@/components/ui/Callout.astro';
 
 ## Why this exists
-
+### Claude Sonnet says: 
 For the last decade, "cloud IDE" has mostly meant *hosted SaaS that happens to
 run an editor*. That's fine, but it skips the part that matters: when the
 editor, the terminal, and the filesystem all live on the server, every
@@ -22,8 +22,21 @@ under GPLv3 that you run on your own box. The browser is a thin client — every
 keystroke in a terminal, every file write, every chat message is a server-side
 event, broadcast to everyone in the room.
 
+### And to that, I say
+Good Lord, Claude! You can make some silly things up. I wrote the original version
+over 10 years ago with a friend, and it was supposed to be hacked together and
+quick to play with an online-editor. Because while at the time there was Atom and
+pair programming, there wasn't a good *multi-user editor with shared terminals*.
+
+We built something that wasn't great in our spare time, but it was interesting.
+
+This is a re-make done with serious LLM assisting (with the benefit of refactoring 
+some original stuff) in, as of June 02, 2026 -- approximately 4-5 days. It exists
+because I wanted to see how the whole process would go, and to make a slightly better
+version of what we already made.
+
 <Callout tone="info">
-This is a tech demo. APIs will move. Don't put production data in it yet.
+This is a tech demo, at best. Don't put production data in it yet.
 </Callout>
 
 ## What's in v0
@@ -33,9 +46,9 @@ This is a tech demo. APIs will move. Don't put production data in it yet.
 - An IRC-style chat with persistent history, per project.
 - Git integration (clone / branch / commit / push) inside the workspace.
 - A Helm chart for k3d/k3s and a Docker Compose setup for the lazy.
+- Super basic tools for an LLM agent to call, where I run a Qwen3 9B on a 5080
 
 ## What's next
 
 WebRTC for voice + video, a proper docs site, plugin hooks for language
-servers, and a public sandbox-only demo (one that doesn't expose a real shell
-to the open internet — see [the about page](/about) for the threat model).
+servers, and a public sandbox-only demo.

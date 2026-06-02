@@ -2,24 +2,23 @@
 title: 'Why an in-database filesystem?'
 description: 'Putting project files in Postgres sounds weird until you try to replicate a workspace, undo a delete, or fan out change events.'
 pubDate: 2026-06-02
-author: 'frankd'
+author: 'Claude + FrankD'
 tags: ['design', 'storage']
-draft: true
+draft: false
 ---
 
 The first time someone hears "the filesystem lives in Postgres", the reaction
 is usually a slow blink. *Why?* Disks exist. ext4 exists. Why introduce a
 database between the user and their files?
 
-## The boring answer: events
+## The boring answer: Just because
 
-A collaborative IDE has to fan out file changes to every connected client in
-real time. On a host filesystem, that means watching inotify, debouncing,
-mapping paths to subscribers, and racing against the kernel.
+Because it's a safer and persistent way to store minute (as in small) changes
+to a text document. Yes, it eats a row and ~50 bytes per character that a user 
+types. Yes, it would be slow at a usable scale. But it's a fun little abstraction.
 
-In Postgres, it's `LISTEN/NOTIFY` on a row update. The same transaction that
-writes the file also tells every subscriber it changed. No watcher process.
-No race. No "the file got modified twice but inotify only fired once".
+Claude would like to hallucinate that it's because of some broadcast nonsense. It
+is not. And we can drop-in replace OT/CRDT at some point in the future.
 
 ## The other boring answer: snapshots
 
@@ -28,7 +27,9 @@ are a `created_at` filter. Replication is whatever your Postgres is already
 doing for the rest of your data. Undelete is `WHERE deleted_at IS NULL`
 flipped to `IS NOT NULL` for five seconds.
 
-You don't have to invent a versioned filesystem. You inherit one.
+You don't have to invent a versioned filesystem. You inherit one. 
+
+If that isn't an LLM statement, I don't know what is.
 
 ## The catch
 
