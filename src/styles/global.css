@@ -24,7 +24,7 @@
   body {
     @apply min-h-screen relative;
     background-image:
-      radial-gradient(ellipse at top, rgba(127, 255, 154, 0.06), transparent 60%),
+      radial-gradient(ellipse at top, rgba(95, 255, 200, 0.06), transparent 60%),
       radial-gradient(ellipse at bottom right, rgba(92, 246, 255, 0.04), transparent 60%);
   }
 
@@ -74,7 +74,7 @@
     @apply mx-auto w-full max-w-6xl px-6;
   }
   .glow-text {
-    text-shadow: 0 0 8px rgba(127, 255, 154, 0.55);
+    text-shadow: 0 0 8px rgba(95, 255, 200, 0.55);
   }
   .prose-carbide {
     @apply max-w-none text-carbide-text;

@@ -80,14 +80,15 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
 
   <section class="container-wide py-16">
     <header class="mb-8">
-      <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// how it works</p>
-      <h2 class="mt-2 text-2xl font-bold text-carbide-text">Three moving parts</h2>
+      <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// architecture</p>
+      <h2 class="mt-2 text-2xl font-bold text-carbide-text">Four moving parts</h2>
     </header>
-    <ol class="grid gap-4 sm:grid-cols-3">
+    <ol class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {[
-        { n: '01', title: 'Server', body: 'Rails 8.1 app holds your projects, terminals, FS, and chat.' },
-        { n: '02', title: 'Worker', body: 'Per-project PTY processes broadcast to collaborators via WebSockets.' },
-        { n: '03', title: 'Client', body: 'A browser tab — editor, terminal, chat. No native install needed.' },
+        { n: '01', title: 'control', body: 'The only cluster-wide Rails process. Owns users, projects, JWT minting, and the Kubernetes operator that spawns workspace pods.' },
+        { n: '02', title: 'server', body: 'Per-project workspace pod. Rails REST API + Postgres-backed VFS + asset serving.' },
+        { n: '03', title: 'worker', body: 'EventMachine WebSocket server inside each workspace pod. Owns PTY shells, real-time file sync, chat, LLM agent tool calls.' },
+        { n: '04', title: 'client', body: 'Vue 3 + Vite SPA with Monaco editor and xterm.js. Shipped into both the workspace and the control dashboard.' },
       ].map((s) => (
         <li class="rounded-lg border border-carbide-line bg-carbide-surface/70 p-5">
           <p class="font-mono text-2xl text-carbide-green glow-text">{s.n}</p>

@@ -23,11 +23,13 @@ import Base from '@/layouts/Base.astro';
 
     <h2>Tech stack</h2>
     <ul>
-      <li><strong>Server</strong>: Ruby 4.0 + Rails 8.1, Postgres, ActionCable / custom WebSocket layer.</li>
-      <li><strong>Worker</strong>: per-project process supervising PTYs and broadcasting frames.</li>
-      <li><strong>Client</strong>: TypeScript + xterm.js + a custom editor surface.</li>
-      <li><strong>Filesystem</strong>: stored in Postgres, watched via INOTIFY-style change events.</li>
-      <li><strong>Deploy</strong>: works on plain Linux, Docker Compose, or Kubernetes (k3d-friendly).</li>
+      <li><strong>carbide2-control</strong>: single cluster-wide Rails 8.1 app. Owns users, projects, JWT minting, and a Kubernetes operator that provisions workspace pods by watching <code>Workspace</code> Custom Resources. The only process with cluster-write RBAC.</li>
+      <li><strong>carbide2-server</strong>: per-project workspace pod. Rails REST API (Puma), Postgres-backed VFS, asset serving. One deployment per project in its own namespace.</li>
+      <li><strong>carbide2-worker</strong>: EventMachine WebSocket server inside each workspace pod. Owns all real-time traffic — PTY shells, bidirectional file sync via inotify, IRC-style chat, LLM agent tool calls, debug stream.</li>
+      <li><strong>carbide2-client</strong>: Vue 3 + Vite SPA with Monaco editor and xterm.js. Built once; shipped into both the workspace image and the control-plane dashboard via Docker named build contexts.</li>
+      <li><strong>Meta-repo (carbide2)</strong>: pins compatible versions of all four components as git submodules. Docker builds consume the client as a <code>--build-context</code>.</li>
+      <li><strong>Storage</strong>: CloudNativePG (Postgres) — shared cluster, one DB per workspace. PersistentVolumeClaim per workspace. VFS lives in Postgres revision log; inotify sync keeps disk and DB in step.</li>
+      <li><strong>Deploy</strong>: k3d for local dev, Kubernetes + Traefik + CNPG in production. Helm chart included.</li>
     </ul>
 
     <h2>License</h2>
