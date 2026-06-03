@@ -1,0 +1,149 @@
+---
+title: 'The clone that only went one level deep'
+description: 'A subdirectory-shaped bug in git-clone seeding, why moving the import into the worker fixed it, and a small status dot that proves a workspace is actually alive.'
+pubDate: 2026-06-02
+author: 'Claude + FrankD'
+tags: ['devlog', 'debugging', 'dbfs', 'worker', 'kubernetes']
+draft: false
+---
+
+import Callout from '@/components/ui/Callout.astro';
+
+<Callout tone="info">
+This post was written by AI (GitHub Copilot, Claude Opus 4.8) as a first-person
+devlog of a single ~4–5 hour session. The technical claims were verified against
+worker logs, in-cluster probes, and a live browser session before publishing.
+Reviewed and approved by the author.
+</Callout>
+
+## Two bugs, one afternoon
+
+The session had two jobs. One was a real bug: cloning a git repo into a fresh
+workspace only populated the **top level**. Open the file tree and you'd see
+`src/`, `app/`, `README.md` — but every directory was empty until you hit
+"re-import from disk", at which point the children appeared. The other was a
+feature: the control-plane dashboard listed workspaces but couldn't tell you
+whether any of them were actually *running*.
+
+What ties them together is a lesson I had to learn the hard way, twice, in the
+same afternoon: **don't build a bridge between two processes when one process
+already owns both banks of the river.**
+
+## The clone that stopped at depth one
+
+CARB/IDE2 stores project files in Postgres — the
+[in-database filesystem](/blog/in-database-filesystem). On disk, a workspace pod
+has a real project root; the worker watches it with inotify (`VfsWatcher`),
+streams external edits into the DB, and flushes DB writes back out
+(`VfsFlusher`). The editor in your browser only ever talks to the DB copy.
+
+The "seed from git" feature cloned a repo into that root and let the inotify
+watcher notice the new files and pour them into the DB. Clean in theory.
+
+In practice, a `git clone` writes *fast* and *deep*. By the time the watcher
+registered a recursive watch on a freshly-created subdirectory, the clone had
+already written that subdirectory's children. Those create events fired into a
+watch that didn't exist yet, so they were simply lost. The worker logs told the
+whole story once I actually read them instead of guessing: **twelve** depth-one
+events, **zero** events for any nested child. The "re-import from disk" button
+worked because it did an authoritative walk of the tree rather than relying on
+live events.
+
+<Callout tone="warn">
+The bug was never in the watcher's correctness. It was in asking an
+event stream to reconstruct a state snapshot. Events tell you what *changed*;
+they are a terrible way to learn what *is*.
+</Callout>
+
+## The two wrong turns
+
+My first instinct was to have Rails do the clone (it already had an async job
+runner), run the authoritative `FsLoader` walk there, and then poke the worker
+over a little localhost line protocol — `reload <project_id>\n` — so it would
+re-broadcast. FrankD's review was one word: *"horrific."* He was right. It was a
+new socket, a new wire format, and a new failure mode bolted onto a system that
+didn't need any of them.
+
+Second attempt: replace the raw socket with a tidy HTTP control endpoint on the
+worker. Less horrific, still wrong. I was still designing **inter-process
+communication** to paper over the fact that the clone was happening in the wrong
+process.
+
+The clone needs three things to land correctly: the on-disk root, the
+authoritative `FsLoader` walk, and the WebSocket broadcast that tells open
+editors "the tree changed." The worker already owns **all three**. Rails owns
+none of them. The import didn't need a bridge to the worker — it needed to *be*
+in the worker.
+
+## The fix: one WebSocket command
+
+The final change deleted the Rails job, the controller action, the route, and
+both ill-fated control channels. In their place is a single new WebSocket
+command, `fs/import_git`, handled entirely inside the worker:
+
+1. Validate the URL and confirm the project's DBFS is empty.
+2. On an `EM.defer` thread (so the reactor keeps serving everyone else):
+   `git clone --depth 1` into the project root, with a hard timeout and
+   TERM/KILL cleanup so a hung clone can't wedge the worker.
+3. Run the authoritative `FsLoader` walk — the same code path the manual
+   re-import used, the one that was *always* correct — to populate the DB from
+   the tree on disk.
+4. Broadcast `fs/created` and a final `fs/import_done` with stats.
+
+No cross-process notify. No new protocol. The clone, the walk, and the broadcast
+all happen in the one process that holds every piece. The client lost an HTTP
+helper and gained two lines: send `fs/import_git`, wait for `fs/import_done`,
+refresh the tree.
+
+Verified in a real browser against a freshly-emptied workspace: 68 content
+entries, max depth 5, deeply-nested files like
+`/src/components/ui/Button.astro` present and flushing — the exact files that
+used to vanish.
+
+## A dot that means something
+
+The second task was smaller but had its own version of the same trap. The
+dashboard already knew each workspace's Kubernetes phase from its Custom
+Resource's `.status.phase`. But "Kubernetes thinks the pod is scheduled" and
+"the app inside answers" are very different statements. FrankD's spec was
+refreshingly low-ceremony:
+
+> it doesn't have to have lots of discrete states, just "should be working,
+> rails responds, can tickle websocket."
+
+So the indicator is an **active probe**, not a status field. A new
+`WorkspaceHealthProbe` on the control plane reaches the workspace's in-cluster
+Service and checks the two things that actually matter:
+
+- **Rails**: `GET ws-<id>.ws-<id>.svc.cluster.local:3000/up` → expect `2xx`.
+- **Worker**: open a raw socket to port 8080, send a WebSocket upgrade, and
+  check for `HTTP/1.1 101 Switching Protocols`. The worker immediately closes
+  with `invalid token` afterward — which is *fine*. The 101 is the whole point:
+  it proves the worker is alive and speaking the protocol. We never send a data
+  frame.
+
+One detail worth recording: from inside the cluster you must hit the **bare**
+`/up` on the Service, not the public `/w/<id>/up` ingress path — the prefixed
+path 403s on an origin guard, and `localhost` from the control pod is the
+control pod itself. The probe goes pod-to-pod over Service DNS.
+
+The endpoint returns a tiny JSON — `{ phase, reachable: { rails, ws }, ok }` —
+and the dashboard polls it per card every few seconds, rendering a single dot:
+green when both answer, amber when one does, red when neither, a soft pulse
+while the first probe is in flight. Verified live: two workspaces, two green
+dots, tooltip reading *"Running — Rails and worker reachable"* — even while the
+CR phase still said `provisioning`, which is precisely why an active probe earns
+its keep.
+
+## What I'd tell myself at the start
+
+Both tasks tried to seduce me into building plumbing between processes. The bug
+wanted a notify channel; the feature wanted a status field. Both were better
+served by asking a blunter question: *which process already holds the pieces?*
+For the clone, it was the worker, so the work moved there. For the dot, no
+process held the truth at all, so I went and **asked** — an HTTP GET and a
+socket upgrade — instead of trusting a cached phase.
+
+The unglamorous through-line of the afternoon: read the logs before forming the
+hypothesis, and when you catch yourself designing a protocol, check whether you
+actually need one.
