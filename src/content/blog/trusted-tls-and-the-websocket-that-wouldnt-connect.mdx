@@ -1,0 +1,249 @@
+---
+title: 'The click-through cert that broke every WebSocket'
+description: 'Forcing HTTPS got the pages loading, but the IDE socket still refused to connect — and the browser said nothing. The culprit was the same self-signed cert we shrugged at. This is the addendum: why a cert you can click past still kills wss://, how mkcert became Traefik''s default certificate for every route in the cluster, and the two small fixes (cert SANs and Rails host authorization) that made a brand-new hostname just work.'
+pubDate: 2026-06-04
+author: 'Claude + FrankD'
+tags: ['infrastructure', 'traefik', 'kubernetes', 'tls', 'websockets', 'mkcert']
+draft: false
+---
+
+The [last post](/blog/forcing-https-traefik-redirect) ended on a victory lap:
+type `http://`, land on `https://`, secure context guaranteed, mesh calls
+working. The pages loaded. We moved on.
+
+Then the IDE wouldn't connect.
+
+The dashboard rendered fine over HTTPS. You could click through the browser's
+"Not secure" warning, log in, see your project. But the workspace WebSocket —
+the channel that carries the terminal, the filesystem, the agent, the call
+signalling — sat there retrying forever. Status: **Offline**. No error in the
+console worth the name. No response headers. Just a socket that opened and
+instantly died, over and over, about once a second.
+
+We had built the connection telemetry in the last post precisely so the socket
+would tell the truth about itself. It was telling the truth. We just didn't like
+the answer.
+
+## The cert we waved through was the whole problem
+
+Here is the sentence this post exists to deliver:
+
+> A browser will let you **click through** an untrusted TLS cert for a page
+> navigation. It will **not** let you click through it for a `wss://`
+> WebSocket. There is no bypass dialog. The handshake just fails.
+
+When we turned on TLS, we used `tls: {}` — "terminate TLS with whatever cert you
+have." Traefik's answer to "whatever cert you have" is its built-in fallback:
+
+```
+subject=CN = TRAEFIK DEFAULT CERT
+issuer =CN = TRAEFIK DEFAULT CERT
+X509v3 Subject Alternative Name:
+    DNS:<random-hex>.<random-hex>.traefik.default
+```
+
+A self-signed cert for a hostname that is not yours, issued by an authority your
+machine has never heard of. For a *page*, Chrome shows the interstitial, you
+click "proceed," and it remembers that override for the tab. That per-tab
+exception is why the dashboard loaded and we thought TLS was done.
+
+But `WebSocket` connections get the strict treatment. The browser validates the
+cert with no UI and no override path, because there's nowhere to *show* a
+warning for a background socket. An untrusted cert means the `wss://` handshake
+dies before a single frame moves. The page works; the socket doesn't; and the
+two facts look unrelated until you realize they're served by the same cert.
+
+We proved it the boring way, with `openssl s_client` against the live port,
+before changing a line of code. Read the data before the hypothesis — the
+recurring lesson of this whole series.
+
+## mkcert, but pointed at the cluster
+
+The fix is a cert the browser actually trusts. For a LAN dev box, that's
+[mkcert](https://github.com/FiloSottile/mkcert): it runs a tiny local
+certificate authority, installs that CA into your trust stores, and mints
+leaf certs signed by it. Browsers trust the CA, so they trust anything it signs.
+
+The question was *where* to install the cert. We have more than one route:
+
+- the control-plane dashboard route, and
+- one `IngressRoute` per workspace (`/w/1`, `/w/2`, …), each emitted by the
+  operator.
+
+Every one of them carries `tls: {}` — no named secret. Patching each route to
+reference a cert secret would mean touching the operator's per-workspace
+template too, and remembering to do it for every future route type.
+
+Traefik has a cleaner answer: a **default certificate**. A `TLSStore` named
+`default` in Traefik's namespace becomes the cert served by *any* router whose
+`tls` block names no explicit secret. One object, and every `tls: {}` route in
+the cluster — dashboard and all workspaces, present and future — inherits the
+trusted cert.
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default          # the magic name
+  namespace: traefik
+spec:
+  defaultCertificate:
+    secretName: carbide-tls
+```
+
+So the deploy script now, before it rolls anything:
+
+1. checks for `mkcert` and **fails loudly** if it's missing — more on that
+   below,
+2. mints a cert covering the cluster's hostnames,
+3. drops it into a `kubernetes.io/tls` secret, and
+4. applies the `default` `TLSStore` pointing at it.
+
+The whole thing is idempotent: if the secret already exists it's reused, so
+re-running the deploy doesn't churn the cert (and doesn't invalidate the trust
+you've already set up on your workstation).
+
+### Fail loudly, not silently
+
+The one hard requirement was the error path. If `mkcert` isn't installed, the
+deploy must not limp along on the untrusted default cert and leave you debugging
+a dead socket an hour later. It stops, and it tells you exactly what to do:
+
+```
+xx mkcert not found. It is required to mint a locally-trusted TLS
+cert for the ingress. Without a trusted cert the dashboard loads after a
+browser click-through, but the IDE WebSocket (wss://) silently fails.
+
+Install mkcert, then re-run this script:
+  # Debian/Ubuntu
+  sudo apt-get install -y libnss3-tools
+  curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64"
+  ...
+```
+
+A confusing failure that wastes an afternoon is worse than a blunt one that
+hands you the fix. If a tool is mandatory, make its absence a clear stop, not a
+silent degrade.
+
+## The CA has to live where the browser does
+
+Here's the wrinkle that mkcert's docs gloss over for a setup like ours: the
+cluster runs on a Linux box (WSL2, in our case), but **the browser runs
+somewhere else** — the Windows host. mkcert on the cluster machine installs the
+CA into *that* machine's trust store. Your browser, on a different OS, has never
+seen it.
+
+So trusting the cert is a two-place job:
+
+- **On the cluster host** (for terminal tests), point tools at the CA file
+  explicitly — `curl --cacert rootCA.pem`, `NODE_EXTRA_CA_CERTS=rootCA.pem` —
+  no system install needed.
+- **On the machine running the browser**, import the CA into the OS trust
+  store. We copied `rootCA.pem` over and dropped it into the Windows
+  *CurrentUser → Trusted Root* store, which needs no admin rights and is honored
+  by Chrome and Edge:
+
+  ```powershell
+  Import-Certificate -FilePath dev1-rootCA.crt `
+    -CertStoreLocation Cert:\CurrentUser\Root
+  ```
+
+  (Firefox keeps its own trust store; import the same file under Settings →
+  Privacy → Certificates if that's your browser.)
+
+Restart the browser fully and the "Not secure" badge is gone — and, far more
+importantly, `wss://` validates and the socket connects.
+
+## An aside: yes, there's a new way to deploy it
+
+If you've read the earlier posts you'll have noticed a pattern: every time we
+touch the infrastructure, the *way you deploy the thing* mutates again. There
+was a docker-compose era. Then a pile of shell scripts. Then Helm charts. Then
+an operator that reconciles workspace custom resources. Each one solved the
+problem in front of us and left a sediment layer behind.
+
+The TLS work was the tipping point. The cert step has an ordering dependency —
+the `TLSStore` has to exist before the routes are served, the secret before the
+store, and `mkcert` before any of it — and threading that through a bag of
+loosely-coupled shell scripts was how you got a deploy that worked on Tuesday and
+404'd on Wednesday. The thing the user actually asked for was not a feature. It
+was: **"make the deploy consistently work."**
+
+So there is, once again, a new way to deploy it: a single `deploy.rb` that owns
+the whole pipeline as an explicit, idempotent sequence —
+
+```
+require_tools → ensure_infra → build_images → import_images
+  → apply_crd → install_control_plane → setup_tls → roll_deployments → verify
+```
+
+— and re-running it converges the cluster instead of layering more state on top.
+The mkcert step from this post is just one stage in that list, which is the whole
+point: the cert, the CA secret, the `TLSStore`, the Helm release, and the image
+rolls now happen in a defined order, every time, or the script stops and tells
+you why. No registry in the dev cluster means images are `k3d image import`ed and
+pods pinned to a tag, so the script also rolls every deployment after import to
+dodge the "two pods, same tag, different digest" staleness trap we've been bitten
+by before.
+
+Is consolidating onto one entry point its own small admission that the previous
+three ways were friction? Sure. But a deploy you can run twice and get the same
+answer is worth retiring a few scripts for. The graveyard of deploy mechanisms is
+a feature of a project still figuring out its own shape — and writing the cert
+provisioning *into* that single path is what finally made "turn on TLS" a thing
+you do once, not a thing you re-debug every redeploy.
+
+## Two small fixes for a brand-new hostname
+
+Switching to a real hostname (`dev1.frankd.local` instead of `localhost`)
+surfaced two more papercuts worth recording.
+
+**The cert needs the right name.** `mkcert` only vouches for the hostnames you
+list. Our first cut auto-detected names from `hostname -f`, which on the box
+returned a bare `dev1` — missing the `.frankd.local` the browser actually uses.
+A cert valid for the wrong name is exactly as useless as no cert. The deploy now
+takes a `PUBLIC_HOST` and threads it into the cert's SANs, the public URL the
+control plane advertises, *and* — next papercut — the framework's host
+allowlist.
+
+**Rails 8 blocks unknown hosts.** Open the app at the new hostname and Rails
+greets you with:
+
+```
+Blocked hosts: dev1.frankd.local
+To allow requests to these hosts, add the following to your environment...
+```
+
+Host authorization is a good default — it stops DNS-rebinding attacks — but it
+means a new public hostname has to be on the allowlist. Rather than hand-editing
+an env var per cluster, the operator now parses the host out of the public URL
+it's already given and appends it to each workspace pod's allowlist
+automatically. Set one `PUBLIC_HOST`, and the cert, the redirects, and the host
+authorization all agree about what the box is called.
+
+## The payoff
+
+```
+HTTPS  /w/1/                     -> 200, trusted cert (no warning)
+wss:// /w/1/ws/                  -> 101 Switching Protocols, TLS authorized: true
+```
+
+The dashboard loads with a clean padlock. The IDE socket connects on the first
+try. The terminal, the file tree, the agent, and the call signalling all flow
+over a channel the browser is finally willing to trust.
+
+## What we'd tell past us
+
+- **"Click through" is a page-only escape hatch.** WebSockets get strict cert
+  validation with no bypass. A cert you can wave past in the address bar will
+  still kill every `wss://` connection.
+- **`tls: {}` means "use the default cert" — so define the default.** A
+  `TLSStore` named `default` fixes every route at once, instead of stamping a
+  secret name onto each one.
+- **The CA must be trusted where the *browser* runs**, which isn't always where
+  the cluster runs. For terminal checks, point tools at the CA file directly and
+  skip the system install.
+- **A mandatory tool's absence should be a loud stop**, not a quiet downgrade to
+  a broken-but-running state.
+- **Pick one name for the box and thread it everywhere** — cert SANs, public
+  URL, and host authorization — or each layer will disagree about who you are.
