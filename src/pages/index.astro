@@ -15,12 +15,12 @@ const features = [
   {
     icon: '⏚',
     title: 'Live PTY sharing',
-    body: 'Real terminals, mirrored to every collaborator in real time. Pair on a bug or screen-share a long-running process.',
+    body: 'Real terminals, mirrored to every collaborator in real time. Team up on a bug or screen-share a long-running process. Record sessions for later playback.',
   },
   {
     icon: '◉',
     title: 'In-database filesystem',
-    body: 'Files live in Postgres with INOTIFY-driven change events. Versioned, queryable, and replicable.',
+    body: 'Files live in Postgres with INOTIFY-driven change events. Yeah, we log every single keystroke. Don\'t worry, it\'s encrypted at rest and in transit. Or atleast, that\'s what Claude believes.',
   },
   {
     icon: '⌬',
@@ -34,7 +34,7 @@ const features = [
   },
   {
     icon: '⌖',
-    title: 'WebRTC (coming)',
+    title: 'WebRTC',
     body: 'Voice and video for the same collaborators already in your terminal and chat.',
   },
 ];
@@ -55,7 +55,7 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
         </h1>
         <p class="mt-5 max-w-xl text-lg text-carbide-muted">
           CARB/IDE2 is an open-source browser IDE with a real shared terminal, an
-          in-database filesystem, and chat baked in. Built on Ruby 4.0 and Rails 8.1,
+          in-database filesystem, and chat baked in. Built on Ruby and Rails 8.1, Vue 3, and Postgres, it's designed for teams who want to collaborate without the friction of local setups. It's currently a tech demo, but the code is open and
           licensed GPLv3.
         </p>
         <div class="mt-7 flex flex-wrap gap-3">
@@ -67,6 +67,14 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
       </div>
 
       <TerminalHero />
+    </div>
+  </section>
+
+  <section class="container-wide py-8">
+    <div class="rounded-lg border border-carbide-line bg-carbide-surface/70 px-8 py-6 text-center">
+      <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// what is carb/ide?</p>
+      <p class="mt-3 text-carbide-muted"><span class="font-mono text-carbide-text">CARB/IDE</span> is…</p>
+      <p id="carbide-acronym" class="mt-2 font-mono text-lg text-carbide-green glow-text" style="opacity:1;transition:opacity 0.5s ease"></p>
     </div>
   </section>
 
@@ -125,6 +133,10 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
   )}
 
   <section class="container-wide py-16">
+    <header class="mb-8">
+      <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// screenshot</p>
+      <h2 class="mt-2 text-2xl font-bold text-carbide-text">CARB/IDE2 in action (actual, current screenshot)</h2>
+    </header>
     <img
       src="/app-screenshot.png"
       alt="CARB/IDE2 screenshot"
@@ -132,3 +144,37 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
     />
   </section>
 </Base>
+
+<script>
+  const acronyms = [
+    "Collaborative Artificial Resource Builder Interface Development Ecosystem",
+    "Cloud-Assisted Rapid Build & Integration Deployment Engine",
+    "Collaborative AI Runtime for Building and Iterating on Developer Environments",
+    "CARBIDE Automatically Runs Because It Deploys Everywhere",
+    "CARBIDE Ain't Really Boring If Done Efficiently",
+    "Can't Always Run Before I Do Everything",
+    "Constantly Arguing, Reviewing, Building, Integrating, Deploying, Evaluating",
+    "Code Almost Ready, Boss Is Demanding Estimates",
+    "Commit And Regret: Bug Investigation Done Eventually",
+    "Continuously Avoiding Real Business Interrupts, Deploying Everything",
+    "Can't Always Remember Brackets In Dynamic Environments",
+    "Coffee And Ruby Build Infrastructure Development Environments",
+    "Collaboratively Assembling Really Beautiful Integrated Developer Experiences",
+    "CARBIDE Ain't Recursive, Bro, I Delete Everything",
+    "Continuously Adding Ridiculous Bells, Increasingly Doubting Everything",
+    "Code And Run... Build? Iterate? Deploy? Erm\u2026",
+  ];
+
+  const el = document.getElementById('carbide-acronym');
+  let current = Math.floor(Math.random() * acronyms.length);
+  el.textContent = acronyms[current];
+
+  setInterval(() => {
+    el.style.opacity = '0';
+    setTimeout(() => {
+      current = (current + 1) % acronyms.length;
+      el.textContent = acronyms[current];
+      el.style.opacity = '1';
+    }, 500);
+  }, 10000);
+</script>
