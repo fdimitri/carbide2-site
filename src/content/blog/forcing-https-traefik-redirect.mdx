@@ -1,9 +1,9 @@
 ---
-title: 'The day HTTPS broke everything (and then fixed it)'
-description: 'A WebRTC call needed a secure context, so we turned on TLS. One tls block later, every HTTP route in the cluster was 404ing. Here is how a single Traefik field cascaded into a blank-page bug, and the two-IngressRoute pattern that put it all back together.'
+title: 'Mesh calls, forced HTTPS, and a socket that tells the truth'
+description: 'We added WebRTC voice/video to chat channels — which needed a secure context, which meant TLS, which one tls block later had every HTTP route in the cluster 404ing. Here is the whole arc: the mesh-call feature, the Traefik gotcha and two-IngressRoute fix, and the WebSocket health telemetry we built along the way.'
 pubDate: 2026-06-03
 author: 'Claude + FrankD'
-tags: ['infrastructure', 'traefik', 'kubernetes', 'webrtc']
+tags: ['infrastructure', 'traefik', 'kubernetes', 'webrtc', 'websockets']
 draft: false
 ---
 
@@ -18,7 +18,43 @@ InsecureContextError: Camera/mic need a secure connection.
 Our dev cluster served everything over plain HTTP on `:8080`. So the fix looked
 trivial: terminate TLS at the ingress, serve over HTTPS, done.
 
-It was not trivial. It was a four-act play.
+It was not trivial. It was a four-act play. But first, what we were actually
+building.
+
+## Act 0: The feature — mesh calls inside a chat channel
+
+The whole reason we touched TLS at all was a new feature: **live voice/video
+calls scoped to a chat channel**. A call lives *inside* a channel, so video
+shares the same context as the text conversation already happening there.
+
+The topology is a full mesh — every participant holds a direct
+`RTCPeerConnection` to every other participant. The worker is a deliberately
+dumb **signalling relay**: it never touches media, it just forwards SDP offers,
+answers, and ICE candidates between peers, and tracks who is currently in the
+call so a newcomer knows who to dial.
+
+```
+worker (rtc command set)  ──  pure signalling relay
+  ├─ join      → returns the list of existing peers to offer to
+  ├─ signal    → relays offer / answer / ICE candidate to one peer
+  └─ call_state → broadcasts who's in the call (presence dot in the UI)
+
+browser (useRtc composable)  ──  owns the PC mesh + local media
+```
+
+Two design choices kept it sane:
+
+- **Whoever joins last is the offerer** toward everyone already in the call. The
+  worker returns that peer list on join, so existing members only ever *answer*.
+  That makes the offer/answer handshake glare-free — no two peers ever offer to
+  each other simultaneously.
+- **Peers are addressed by a per-connection `peer_id`**, not by user id, so the
+  same person can join from multiple tabs or devices without collisions.
+
+When `getUserMedia` is blocked, the client now points you straight at the HTTPS
+URL (swapping the dev `:8080` port for `:8443`) instead of a vague "needs a
+secure connection" shrug. Which is exactly why we needed HTTPS in the first
+place.
 
 ## Act 1: Turn on TLS
 
@@ -119,6 +155,37 @@ explicitly. We threaded a `publicHttpsPort` field (default `8443`) through the
 CR, the CRD, and both Helm charts so the redirect always points where the
 browser can actually reach.
 
+## Intermission: making the WebSocket honest about itself
+
+A mesh call is only as good as the signalling channel under it, and that channel
+is the workspace WebSocket. While we were in here, we made the socket *tell the
+truth* about its own health — because "is it connected?" turned out to be a
+question the UI couldn't previously answer.
+
+The `workerSocket` singleton now exposes live, reactive telemetry that a compact
+`ConnectionStatus` readout renders in the top nav:
+
+- **Latency** — a `system/ping` carrying a timestamp goes out on a heartbeat
+  interval; the worker echoes `system/pong`, and the round-trip becomes the
+  `ms` figure next to the status dot. It's a real RTT, not a guess.
+- **Throughput** — every frame in and out is sampled into a sliding ~30s window,
+  averaged every couple of seconds into bytes/sec, and shown as `↓ KB/s ↑ KB/s`.
+  You can watch a big file flush or a busy terminal in the numbers.
+- **Reconnect with backoff** — drops trigger an exponential backoff
+  (`base · 2^attempt`, capped). The dot goes amber and reads
+  `Reconnecting… (n)`; after enough failures it flips to a red **Offline** with a
+  **Retry now** button that resets the attempt counter and dials immediately.
+- **Auth-aware** — a `401` is *not* a network blip. Instead of blindly
+  reconnecting, the socket surfaces `Auth expired` and lets the app refresh the
+  token or route to login, so token rotation never turns into a reconnect storm.
+
+The status dot is colour-coded — green connected, amber connecting/reconnecting,
+red offline/unauthorized — and the whole widget hides itself when there's no
+active workspace socket, so it only appears where it means something.
+
+The point isn't the pretty dot. It's that when a call drops or a frame stalls,
+you can now see *whether the socket is healthy* at a glance instead of guessing.
+
 ## The payoff
 
 Now every entry point does the right thing:
@@ -144,6 +211,10 @@ mess finally works.
   It was a routing-precedence bug exposed by a TLS change. The logs said so
   before we did.
 - **Name the redirect port** when your public port isn't the standard one.
+- **A real RTT beats a vibe.** Heartbeat ping/pong + a sliding throughput
+  window turned "is the socket okay?" from a guess into a number on screen.
+- **A `401` is not a network blip.** Treat auth failures as their own state, or
+  token rotation becomes a reconnect storm.
 
 HTTP for a no-auth, read-only endpoint? Sure. For anything that touches a
 session, a camera, or a credential? Force the upgrade. There's no reason to ship
