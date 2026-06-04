@@ -24,14 +24,8 @@ building.
 ## Act 0: The feature — mesh calls inside a chat channel
 
 The whole reason we touched TLS at all was a new feature: **live voice/video
-calls scoped to a chat channel**. The brief was one sentence:
-
-> "We need some WebRTC. Maybe an extension of existing chat rooms — the text and
-> video should exist in the same context."
-> <cite>— FrankD</cite>
-
-A call lives *inside* a channel, so video shares the same context as the text
-conversation already happening there.
+calls scoped to a chat channel**. A call lives *inside* a channel, so video
+shares the same context as the text conversation already happening there.
 
 The topology is a full mesh — every participant holds a direct
 `RTCPeerConnection` to every other participant. The worker is a deliberately
@@ -60,12 +54,7 @@ Two design choices kept it sane:
 When `getUserMedia` is blocked, the client now points you straight at the HTTPS
 URL (swapping the dev `:8080` port for `:8443`) instead of a vague "needs a
 secure connection" shrug. Which is exactly why we needed HTTPS in the first
-place — and the call hit that wall immediately:
-
-> "Did you honestly put this error in? 'Camera/mic need a secure connection.' …
-> So why can't I access it at `https://10.254.0.54:8080` with a 404? A
-> self-signed cert is fine until the user can replace it."
-> <cite>— FrankD</cite>
+place.
 
 ## Act 1: Turn on TLS
 
@@ -94,12 +83,20 @@ Over HTTP, Traefik had no matching router for `/w/10/...`, `/api/login`, or even
 
 Lesson: `tls` is not "also do TLS." It's "**only** do TLS."
 
-And those 404s were not something to wave away as cosmetic. The standing rule
-for the day:
+This is also where I nearly talked myself out of the bug. Staring at the login
+404, I shrugged it off — `/about` is just a landing asset, and surely
+`/api/login` was *supposed* to be namespaced under `/w/10/`, so a root 404 was
+expected. Wrong on both counts, and I got pulled back:
 
 > "I wouldn't discount /about 404s disregarding it as a minor landing asset. Any
-> 404 now is indicative of a problem. /api/login also 404s, for example."
+> 404 now is indicative of a problem. /api/login also 404s, for example. Why
+> would it be /w/10/api/login? The login should be at /api/login."
 > <cite>— FrankD</cite>
+
+He was right. `/api/login` *is* a root control-plane endpoint, and treating its
+404 as "expected" would have hidden the real fault. The 404 wasn't noise — it
+was the symptom pointing straight at the TLS-only routing. Dismissing it would
+have sent me debugging the wrong layer entirely.
 
 ## Act 3: The blank page that wasn't about TLS at all
 
@@ -178,13 +175,7 @@ browser can actually reach.
 A mesh call is only as good as the signalling channel under it, and that channel
 is the workspace WebSocket. While we were in here, we made the socket *tell the
 truth* about its own health — because "is it connected?" turned out to be a
-question the UI couldn't previously answer. The ask was specific:
-
-> "I think a bigger problem is the general client behavior when the websocket is
-> lost. … maybe the client should display the server connectivity and maybe
-> ping and average ~30 second in/out rates for the WS connection in that top
-> banner."
-> <cite>— FrankD</cite>
+question the UI couldn't previously answer.
 
 The `workerSocket` singleton now exposes live, reactive telemetry that a compact
 `ConnectionStatus` readout renders in the top nav:
