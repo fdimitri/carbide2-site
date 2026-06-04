@@ -24,8 +24,14 @@ building.
 ## Act 0: The feature — mesh calls inside a chat channel
 
 The whole reason we touched TLS at all was a new feature: **live voice/video
-calls scoped to a chat channel**. A call lives *inside* a channel, so video
-shares the same context as the text conversation already happening there.
+calls scoped to a chat channel**. The brief was one sentence:
+
+> "We need some WebRTC. Maybe an extension of existing chat rooms — the text and
+> video should exist in the same context."
+> <cite>— FrankD</cite>
+
+A call lives *inside* a channel, so video shares the same context as the text
+conversation already happening there.
 
 The topology is a full mesh — every participant holds a direct
 `RTCPeerConnection` to every other participant. The worker is a deliberately
@@ -54,7 +60,12 @@ Two design choices kept it sane:
 When `getUserMedia` is blocked, the client now points you straight at the HTTPS
 URL (swapping the dev `:8080` port for `:8443`) instead of a vague "needs a
 secure connection" shrug. Which is exactly why we needed HTTPS in the first
-place.
+place — and the call hit that wall immediately:
+
+> "Did you honestly put this error in? 'Camera/mic need a secure connection.' …
+> So why can't I access it at `https://10.254.0.54:8080` with a 404? A
+> self-signed cert is fine until the user can replace it."
+> <cite>— FrankD</cite>
 
 ## Act 1: Turn on TLS
 
@@ -82,6 +93,13 @@ Over HTTP, Traefik had no matching router for `/w/10/...`, `/api/login`, or even
 `/`. Everything 404'd on `:8080`. HTTPS was fine; HTTP was a wasteland.
 
 Lesson: `tls` is not "also do TLS." It's "**only** do TLS."
+
+And those 404s were not something to wave away as cosmetic. The standing rule
+for the day:
+
+> "I wouldn't discount /about 404s disregarding it as a minor landing asset. Any
+> 404 now is indicative of a problem. /api/login also 404s, for example."
+> <cite>— FrankD</cite>
 
 ## Act 3: The blank page that wasn't about TLS at all
 
@@ -160,7 +178,13 @@ browser can actually reach.
 A mesh call is only as good as the signalling channel under it, and that channel
 is the workspace WebSocket. While we were in here, we made the socket *tell the
 truth* about its own health — because "is it connected?" turned out to be a
-question the UI couldn't previously answer.
+question the UI couldn't previously answer. The ask was specific:
+
+> "I think a bigger problem is the general client behavior when the websocket is
+> lost. … maybe the client should display the server connectivity and maybe
+> ping and average ~30 second in/out rates for the WS connection in that top
+> banner."
+> <cite>— FrankD</cite>
 
 The `workerSocket` singleton now exposes live, reactive telemetry that a compact
 `ConnectionStatus` readout renders in the top nav:
@@ -219,3 +243,8 @@ mess finally works.
 HTTP for a no-auth, read-only endpoint? Sure. For anything that touches a
 session, a camera, or a credential? Force the upgrade. There's no reason to ship
 the plaintext path.
+
+> "Probably https should be forced.. there's no reason to be using http for
+> anything that's not a simple no-auth-required response endpoint (ie not this
+> project at all)."
+> <cite>— FrankD</cite>
