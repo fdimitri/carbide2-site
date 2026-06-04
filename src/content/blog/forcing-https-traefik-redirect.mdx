@@ -1,0 +1,150 @@
+---
+title: 'The day HTTPS broke everything (and then fixed it)'
+description: 'A WebRTC call needed a secure context, so we turned on TLS. One tls block later, every HTTP route in the cluster was 404ing. Here is how a single Traefik field cascaded into a blank-page bug, and the two-IngressRoute pattern that put it all back together.'
+pubDate: 2026-06-03
+author: 'Claude + FrankD'
+tags: ['infrastructure', 'traefik', 'kubernetes', 'webrtc']
+draft: false
+---
+
+It started innocently. We wanted voice and video chat between people sharing a
+workspace, so we reached for `getUserMedia`. The browser said no.
+
+```
+InsecureContextError: Camera/mic need a secure connection.
+```
+
+`getUserMedia` only works in a *secure context* — HTTPS, or `http://localhost`.
+Our dev cluster served everything over plain HTTP on `:8080`. So the fix looked
+trivial: terminate TLS at the ingress, serve over HTTPS, done.
+
+It was not trivial. It was a four-act play.
+
+## Act 1: Turn on TLS
+
+Traefik already had a `websecure` entrypoint. We told each workspace's
+`IngressRoute` to listen on both `web` and `websecure`, and added a `tls: {}`
+block so Traefik would terminate TLS with its built-in self-signed cert. Good
+enough for a secure context on the dev/LAN path — the browser shows a warning,
+you click through, and `window.isSecureContext` is finally `true`.
+
+HTTPS worked. We celebrated. Then someone loaded the app over plain HTTP and got
+a `404`.
+
+## Act 2: The gotcha that explains everything
+
+Here is the thing nobody tells you, and the single most important sentence in
+this post:
+
+> A Traefik `IngressRoute` that carries a `tls` block marks **every** router it
+> defines as a TLS router — so those routers only match on a TLS entrypoint and
+> `404` on the plaintext `web` entrypoint.
+
+We had listed both `web` and `websecure` on the same route *and* given it a
+`tls` block. The `tls` block won. Suddenly all of our routes were TLS-only.
+Over HTTP, Traefik had no matching router for `/w/10/...`, `/api/login`, or even
+`/`. Everything 404'd on `:8080`. HTTPS was fine; HTTP was a wasteland.
+
+Lesson: `tls` is not "also do TLS." It's "**only** do TLS."
+
+## Act 3: The blank page that wasn't about TLS at all
+
+While we were staring at HTTP 404s, the workspaces started rendering a blank
+shell over HTTPS too. No error. Just an empty SPA.
+
+This one took data, not theory. The control-plane `IngressRoute` had a
+`PathPrefix(/)` catch-all. With the workspace routes broken, that catch-all
+started swallowing `/w/10/*` and serving the *control-plane* SPA instead of the
+*workspace* SPA. The control SPA has no `<base href="/w/10/">`, so the Vue
+router base resolved to `/`, no route matched, and you got a blank page on every
+URL.
+
+The trigger underneath it: our operator **reconciles**. Every loop it rebuilt
+the `IngressRoute` from the workspace custom resource — and the CR still
+defaulted to web-only. So even after we hand-patched the live objects, the
+operator helpfully reverted them seconds later. You cannot fix a reconciled
+resource by patching the cluster. You fix it at the source and let the operator
+agree with you.
+
+So the real repairs were:
+
+- Default the workspace CR's ingress to `web,websecure` + `tls: {}`.
+- Add the `tls` field to the CRD schema so the API would stop dropping it.
+- Rebuild and redeploy the operator so reconcile produced the right object.
+
+`<base href>` came back. Login worked. The WebSocket reconnected. Frames flowed.
+
+## Act 4: Forcing HTTPS without the 404
+
+We still had the original problem from Act 2: if `tls` makes routes TLS-only,
+how do you serve over HTTPS *and* let someone who typed `http://` reach the app?
+You don't cram both onto one route. You split it in two.
+
+For any service that should be HTTPS-only, the operator (and the matching Helm
+charts) now emit **two** `IngressRoute`s whenever both entrypoints are present:
+
+1. **The serving route** — `websecure` only, with the `tls` block. This
+   terminates TLS and proxies to the app.
+2. **The redirect route** — `web` only, no `tls`, pointing at a
+   `redirectScheme` middleware that 301s every request up to `https://`.
+
+```yaml
+# serving route: websecure-only, terminates TLS
+spec:
+  entryPoints: [websecure]
+  tls: {}
+  routes:
+    - match: "PathPrefix(`/w/10`)"
+      services: [{ name: ws-10, port: vite }]
+---
+# redirect route: web-only, 301 -> HTTPS
+spec:
+  entryPoints: [web]
+  routes:
+    - match: "PathPrefix(`/w/10`)"
+      middlewares: [{ name: ws-10-https-redirect }]
+---
+kind: Middleware
+spec:
+  redirectScheme:
+    scheme: https
+    port: "8443"
+    permanent: true
+```
+
+One detail that bit us: the `port` in `redirectScheme` is **not optional** here.
+Traefik's default redirect would send the browser to `:443`, but our k3d cluster
+maps the public HTTPS port to `:8443`. So the redirect has to name the port
+explicitly. We threaded a `publicHttpsPort` field (default `8443`) through the
+CR, the CRD, and both Helm charts so the redirect always points where the
+browser can actually reach.
+
+## The payoff
+
+Now every entry point does the right thing:
+
+```
+HTTP  /w/10/login  -> 301 https://127.0.0.1:8443/w/10/login
+HTTPS /w/10/login  -> 200
+HTTP  /            -> 301 https://127.0.0.1:8443/
+HTTPS /            -> 200
+```
+
+Type `http://`, land on `https://`. The secure context is guaranteed, so
+`getUserMedia` is happy, and the call-presence feature that started this whole
+mess finally works.
+
+## What we'd tell past us
+
+- **`tls` is exclusive, not additive.** A route with `tls` is TLS-only. If you
+  need HTTP too, that's a *second* route.
+- **Don't patch reconciled objects.** If an operator owns a resource, fix the
+  source of truth and redeploy. The cluster is downstream.
+- **Read the data before the hypothesis.** The blank page looked like a TLS bug.
+  It was a routing-precedence bug exposed by a TLS change. The logs said so
+  before we did.
+- **Name the redirect port** when your public port isn't the standard one.
+
+HTTP for a no-auth, read-only endpoint? Sure. For anything that touches a
+session, a camera, or a credential? Force the upgrade. There's no reason to ship
+the plaintext path.
