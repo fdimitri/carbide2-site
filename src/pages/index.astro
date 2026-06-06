@@ -86,10 +86,18 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
   </section>
 
   <section class="container-wide py-8">
-    <div class="rounded-lg border border-carbide-line bg-carbide-surface/70 px-8 py-6 text-center">
+    <header class="mb-6">
       <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// what is carb/ide?</p>
-      <p class="mt-3 text-carbide-muted"><span class="font-mono text-carbide-text">CARB/IDE</span> is…</p>
-      <p id="carbide-acronym" class="mt-2 font-mono text-lg text-carbide-green glow-text" style="opacity:1;transition:opacity 0.5s ease"></p>
+    </header>
+    <div class="flex w-full flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-6">
+      <p class="shrink-0 text-carbide-muted"><span class="font-mono text-carbide-text">CARB/IDE</span> is…</p>
+      <div id="carbide-flip" class="flip-card flex-1">
+        <div class="flip-card__inner">
+          <p id="carbide-front" class="flip-card__face text-carbide-green glow-text"></p>
+          <p id="carbide-back" class="flip-card__face flip-card__face--back text-carbide-green glow-text"></p>
+          <p id="carbide-sizer" class="flip-card__sizer" aria-hidden="true"></p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -201,16 +209,24 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
     // "CARBIDE Automatically Runs Because It Deploys Everywhere",
     // ];
 
-  const el = document.getElementById('carbide-acronym');
+  const flip = document.getElementById('carbide-flip');
+  const front = document.getElementById('carbide-front');
+  const back = document.getElementById('carbide-back');
+  const sizer = document.getElementById('carbide-sizer');
+
   let current = Math.floor(Math.random() * acronyms.length);
-  el.textContent = acronyms[current];
+  let flipped = false;
+  front.textContent = acronyms[current];
+  sizer.textContent = acronyms[current];
 
   setInterval(() => {
-    el.style.opacity = '0';
-    setTimeout(() => {
-      current = (current + 1) % acronyms.length;
-      el.textContent = acronyms[current];
-      el.style.opacity = '1';
-    }, 500);
+    current = (current + 1) % acronyms.length;
+    // Write the next acronym onto whichever face is about to rotate into view,
+    // keep the in-flow sizer in sync so the card grows to fit, then toggle the
+    // flip so the card physically rotates to reveal the new face.
+    (flipped ? front : back).textContent = acronyms[current];
+    sizer.textContent = acronyms[current];
+    flipped = !flipped;
+    flip.classList.toggle('is-flipped', flipped);
   }, 10000);
 </script>

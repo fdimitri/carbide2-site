@@ -105,3 +105,53 @@
   .prose-carbide a { @apply underline decoration-carbide-green/40 underline-offset-4; }
   .prose-carbide hr { @apply border-carbide-line my-10; }
 }
+
+@layer components {
+  /* Two-faced horizontal card flip used for the rotating "CARB/IDE is…" acronym.
+     The card flexes to fill the row beside the label; the in-flow sizer sets its
+     height so it grows to fit whatever acronym is showing. */
+  .flip-card {
+    perspective: 1000px;
+  }
+  .flip-card__inner {
+    position: relative;
+    /* Always tall enough for two lines so short acronyms don't make the card
+       shrink relative to the long, two-line ones. */
+    min-height: calc(2 * 1.125rem * 1.375 + 1.5rem);
+    transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+  }
+  .flip-card.is-flipped .flip-card__inner {
+    transform: rotateY(180deg);
+  }
+  /* Both faces and the sizer share an identical box (padding, border, font) so
+     the card stays self-consistent as the front/back text swaps. */
+  .flip-card__face,
+  .flip-card__sizer {
+    @apply rounded-lg px-5 py-3 text-center font-mono text-lg leading-snug;
+    border: 1px solid transparent;
+  }
+  .flip-card__face {
+    position: absolute;
+    inset: 0;
+    @apply flex items-center justify-center border-carbide-line bg-carbide-surface/70;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  /* The back face starts pre-rotated so it reads right-way-up once the inner
+     element has flipped 180°. */
+  .flip-card__face--back {
+    transform: rotateY(180deg);
+  }
+  /* Invisible, in-flow element that always carries the currently visible text
+     so the card never shrinks below its content on very long acronyms. */
+  .flip-card__sizer {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-card__inner {
+    transition: none;
+  }
+}
