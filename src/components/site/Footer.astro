@@ -1,4 +1,5 @@
 ---
+import ObfuscatedEmail from '@/components/ui/ObfuscatedEmail.astro';
 const year = new Date().getFullYear();
 ---
 
@@ -9,7 +10,7 @@ const year = new Date().getFullYear();
       <p class="mt-1 text-xs">Collaborative browser IDE — open source, GPLv3.</p>
       <p class="mt-1 text-xs">© {year} CARB/IDE2 contributors.</p>
       <p class="mt-1 text-xs">
-        <a href="mailto:frankd@carbidecore.online" class="hover:text-carbide-green">frankd@carbidecore.online</a>
+        <ObfuscatedEmail user="frankd" domain="carbidecore.online" class="hover:text-carbide-green" />
       </p>
     </div>
     <nav aria-label="Footer" class="grid grid-cols-2 gap-x-10 gap-y-2 text-xs sm:grid-cols-3">

@@ -1,12 +1,14 @@
 ---
 import Base from '@/layouts/Base.astro';
+import ObfuscatedEmail from '@/components/ui/ObfuscatedEmail.astro';
 
-const email = 'frankd@carbidecore.online';
+const emailUser = 'frankd';
+const emailDomain = 'carbidecore.online';
 ---
 
 <Base
   title="Contact — CARB/IDE2"
-  description="Get in touch with the CARB/IDE2 project — send a note or email frankd@carbidecore.online."
+  description="Get in touch with the CARB/IDE2 project — send a note or reach out by email."
 >
   <div class="container-narrow py-16">
     <header class="mb-8">
@@ -23,7 +25,7 @@ const email = 'frankd@carbidecore.online';
       <div class="rounded-lg border border-carbide-line bg-carbide-surface/70 px-5 py-4">
         <dt class="text-xs uppercase tracking-widest text-carbide-amber">Email</dt>
         <dd class="mt-1">
-          <a href={`mailto:${email}`} class="text-carbide-green hover:underline">{email}</a>
+          <ObfuscatedEmail user={emailUser} domain={emailDomain} class="text-carbide-green hover:underline" />
         </dd>
       </div>
       <div class="rounded-lg border border-carbide-line bg-carbide-surface/70 px-5 py-4">
@@ -99,9 +101,11 @@ const email = 'frankd@carbidecore.online';
     </form>
   </div>
 
-  <script define:vars={{ email }}>
+  <script define:vars={{ emailUser, emailDomain }}>
     const form = document.getElementById('contact-form');
     const status = document.getElementById('cf-status');
+    // Reassemble at runtime so the address never appears verbatim in the HTML.
+    const email = `${emailUser}\u0040${emailDomain}`;
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();

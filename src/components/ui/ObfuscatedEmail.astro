@@ -1,0 +1,28 @@
+---
+// Renders an email address without ever putting the contiguous "user@domain"
+// string in the static HTML, so harvester bots can't scrape it. The address is
+// assembled from data attributes at runtime; a <noscript> fallback shows an
+// obfuscated, human-readable form for the (rare) JS-disabled visitor.
+interface Props {
+  user: string;
+  domain: string;
+  class?: string;
+}
+const { user, domain, class: className } = Astro.props;
+const obfuscated = `${user} [at] ${domain.replace(/\./g, ' [dot] ')}`;
+---
+
+<a class:list={['js-obf-email', className]} data-user={user} data-domain={domain} href="#" rel="nofollow">
+  <noscript>{obfuscated}</noscript>
+</a>
+
+<script>
+  for (const el of document.querySelectorAll('a.js-obf-email')) {
+    const user = el.getAttribute('data-user');
+    const domain = el.getAttribute('data-domain');
+    if (!user || !domain) continue;
+    const addr = `${user}\u0040${domain}`;
+    el.setAttribute('href', `mailto:${addr}`);
+    el.textContent = addr;
+  }
+</script>
