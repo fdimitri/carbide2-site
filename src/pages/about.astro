@@ -1,16 +1,28 @@
 ---
 import Base from '@/layouts/Base.astro';
+import Callout from '@/components/ui/Callout.astro';
 ---
 
 <Base title="About — CARB/IDE2" description="Why CARB/IDE2 exists, who builds it, and how it's licensed.">
-  <article class="container-narrow py-16 prose-carbide">
-    <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// about</p>
+  <div class="container-narrow py-16">
+    <article class="prose-carbide">
+      <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// about</p>
     <h1>What is CARB/IDE2?</h1>
     <p>
       CARB/IDE2 is an open-source, browser-based collaborative IDE. It moves the
       whole development environment — files, terminals, chat — onto a server you
       control, so everyone working on a project sees the same thing at the same time.
     </p>
+
+    <Callout tone="warn">
+      <p><strong>“Wait, is it even an IDE?”</strong></p>
+      <p>
+        Honestly? Not really — yet. Most of the things that would make it a real
+        IDE are still missing. But a few of them are <em>Coming Soon™</em>, and
+        what exists today is a genuinely nice collaborative editing environment.
+      </p>
+      <p>…But the name is pretty cool.</p>
+    </Callout>
 
     <h2>Why build another IDE?</h2>
     <p>
@@ -44,5 +56,6 @@ import Base from '@/layouts/Base.astro';
       and you should not put production data in it yet. Follow the
       <a href="/blog">devblog</a> for updates.
     </p>
-  </article>
+    </article>
+  </div>
 </Base>
