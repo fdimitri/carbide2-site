@@ -5,15 +5,21 @@ import Badge from '@/components/ui/Badge.astro';
 const sections = [
   {
     badge: '▶ editor',
-    title: 'Browser IDE',
+    title: 'Collaborative Monaco editor',
     body:
-      'Open a workspace and edit immediately. No installs, no toolchain drift, no machine to provision. Files, terminals, and collaborators all in the same tab.',
+      'Open a workspace and edit immediately — no installs, no toolchain drift, no machine to provision. The editor is real-time co-editing: edits from other people apply live in your buffer, and each collaborator gets a named, colored cursor tracked right in the gutter. Files, terminals, and teammates all share one tab.',
   },
   {
-    badge: '⏚ pty',
+    badge: '⏺ pty',
     title: 'Live terminal sharing',
     body:
       'Every terminal is a real PTY on the server, streamed over WebSockets. Multiple people can watch the same shell, and any of them can type. Perfect for pairing, code reviews, or showing a stubborn bug to a teammate.',
+  },
+  {
+    badge: '⏺︎ rec',
+    title: 'Terminal session recordings',
+    body:
+      'Record any terminal to a standard asciinema v2 .cast file with one click, then replay it later — in the UI or with `asciinema play`. Great for capturing a repro, documenting a deploy, or reviewing what a long-running process actually did.',
   },
   {
     badge: '◉ fs',
@@ -35,9 +41,21 @@ const sections = [
   },
   {
     badge: '⌖ webrtc',
-    title: 'Voice & video (planned)',
+    title: 'Voice & video',
     body:
-      'WebRTC audio/video for the same crew already in your shell and chat. Roadmap, not shipped — follow the devblog for updates.',
+      'WebRTC audio/video for the same crew already in your shell and chat. Roughly as built-out as everything else here — it works today, rough edges and all.',
+  },
+  {
+    badge: '✦ agent',
+    title: 'AI agent harness',
+    body:
+      'A first-class agent for plan, chat, and review — not a side panel bolted onto an editor. It connects directly to the same PTYs and in-database filesystem as everyone else, so it runs real commands, watches their output, and edits files in the live workspace. Tool calls flow through the worker alongside human input, which means the agent and your team share one source of truth.',
+  },
+  {
+    badge: '☸ k8s',
+    title: 'Kubernetes-native scaling',
+    body:
+      'A cluster-wide control plane runs a Kubernetes operator that spawns a dedicated workspace pod per project. Workspaces scale out horizontally across nodes, stay isolated from one another, and can be torn down when idle — the whole thing is built to run as a fleet, not a single box.',
   },
 ];
 ---
@@ -54,8 +72,8 @@ const sections = [
     </p>
   </section>
 
-  <section class="container-narrow pb-24">
-    <ol class="space-y-12">
+  <section class="container-wide pb-24">
+    <ol class="grid items-start gap-6 md:grid-cols-2">
       {sections.map((s) => (
         <li class="rounded-lg border border-carbide-line bg-carbide-surface/70 p-6">
           <Badge tone="green">{s.badge}</Badge>

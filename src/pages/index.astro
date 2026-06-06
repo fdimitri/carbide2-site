@@ -9,13 +9,13 @@ import { getCollection } from 'astro:content';
 const features = [
   {
     icon: '▶',
-    title: 'Browser IDE',
-    body: 'A full editor in your tab. No installs, no "works on my machine" — your workspace lives on the server, not your laptop.',
+    title: 'Collaborative editor',
+    body: 'A full Monaco editor in your tab with real-time co-editing — remote edits land live and every collaborator gets a named, colored cursor. No installs; your workspace lives on the server, not your laptop.',
   },
   {
-    icon: '⏚',
+    icon: '⏺',
     title: 'Live PTY sharing',
-    body: 'Real terminals, mirrored to every collaborator in real time. Team up on a bug or screen-share a long-running process. Record sessions for later playback.',
+    body: 'Real terminals, mirrored to every collaborator in real time. Team up on a bug or screen-share a long-running process. Record sessions to asciinema .cast files for later playback.',
   },
   {
     icon: '◉',
@@ -36,6 +36,16 @@ const features = [
     icon: '⌖',
     title: 'WebRTC',
     body: 'Voice and video for the same collaborators already in your terminal and chat.',
+  },
+  {
+    icon: '✦',
+    title: 'AI agent harness',
+    body: 'A built-in agent that plans, chats, and reviews alongside you — wired straight into the same PTYs and in-database files your team is using. It runs commands and edits files in the live workspace, not a sandboxed copy.',
+  },
+  {
+    icon: '☸',
+    title: 'Kubernetes-native',
+    body: 'Each workspace is its own pod, spawned on demand by a control-plane operator. Scale out across the cluster, isolate projects, and tear workspaces down when they’re idle.',
   },
 ];
 
