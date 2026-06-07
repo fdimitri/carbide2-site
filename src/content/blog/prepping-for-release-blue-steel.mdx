@@ -1,0 +1,101 @@
+---
+title: "Prepping for Release: Blue Steel"
+description: "The unglamorous work before a release: extracting CSS so it stops looking kludgy, finally building the agent-config pane that should have existed all along, and a couple of infra papercuts — brittle HTTPS and a k3d ErrImagePull that was really a disk-space problem in disguise."
+pubDate: 2026-06-07
+author: 'Claude + FrankD'
+tags: ['release', 'frontend', 'css', 'kubernetes', 'k3d', 'ui']
+draft: false
+---
+
+Releases aren't built in the last mile; they're *revealed* there. The feature
+work is mostly done — what's left is the layer of small, unglamorous fixes that
+decide whether the thing feels finished or feels like a prototype someone shipped
+by accident. This is the "Blue Steel" prep log: the polish pass.
+
+![The CARB/IDE2 workspace after the Blue Steel polish pass](/app-screenshot2.png)
+
+## CSS, de-kludged
+
+Most of today was pulling style out of the components and into one place. Colors,
+type sizes, corner radii — all of it had been inlined per-component, which is how
+you end up with the brand blue written as `#5ab0ff` in forty files that only
+*coincidentally* agree. I collapsed those into semantic tokens in a single
+`@theme` block (`--color-accent`, `--text-ui-md`, `--radius-ui-sm`, and friends)
+and lifted single-file-component styles up into the shared stylesheet.
+
+The diff is wide and nets out close to even — hundreds of lines in, hundreds out.
+That's the tell that it's a refactor and not a redesign: same pixels, fewer
+decisions behind them. The win isn't visible today. It's the next time someone
+wants the accent a shade brighter and it's one edit instead of a find-and-replace
+and a prayer.
+
+## The agent-config pane that should have always existed
+
+CARB/IDE2 has had agents for a while. What it *didn't* have was any way to
+configure them from the UI — the settings lived wherever settings live when no
+one's built the screen yet. So today: a runtime agent-configuration API on the
+server (`/api/agents`, index/show/update) and an Agent Config pane on the client
+to drive it.
+
+Why wasn't it there from the start? Because "the agents work" and "you can
+configure the agents" are different milestones, and the first one is the one you
+demo. The config surface is exactly the kind of thing that's easy to defer
+forever — the feature *functions* without it, so it never tops the list. Until
+you're prepping a release and realize a feature you can't configure is a feature
+you're asking users to take on faith.
+
+## A small UI change buys a disproportionate amount of "not shitty"
+
+Worth saying plainly: the agent pane didn't add capability. The agents could
+already do everything they can do now. All the pane did was *surface* it — give
+the settings a home, a shape, a place your eye expects them to be. And that alone
+moved the whole feature from "trust me, it's in there" to "oh, there it is."
+
+That's the quiet leverage of UI work. A change that touches zero behavior can
+still change how the product *feels* by a lot, because most of "feels finished"
+is just things being where you expect them. It's the cheapest quality you can
+buy, and it's almost always undervalued because it doesn't show up as a feature.
+
+## Two infra papercuts
+
+**HTTPS, still brittle — but now on localhost.** The [TLS saga](/blog/trusted-tls-and-the-websocket-that-wouldnt-connect)
+was largely a *topology* problem: the browser, the cluster, and the dev box were
+three machines that didn't share a trust store. Pulling development back onto
+localhost doesn't make TLS *robust* — `wss://` is still unforgiving, the cert
+still has to be genuinely trusted — but it collapses the three-machine trust
+problem into one. Fewer boundaries for a cert to fall through is, itself, a fix.
+The brittleness didn't vanish; its blast radius shrank.
+
+**ErrImagePull that was really a disk problem.** A pod sat in `ErrImagePull` and
+the instinct is to debug the registry, the tag, the import command. None of that
+was wrong, but the actual cause was the node running out of disk.
+
+What makes this one nasty is how convincingly it lies. In a k3d workflow you
+don't pull from a registry at all — you `k3d image import` your freshly built
+image straight into the node's containerd store. So when the pod reports
+`ErrImagePull`, every instinct says *that's impossible, I just imported it, it's
+right there.* And it was right there — as a tarball that had nowhere to unpack
+to. The import step succeeded; the node's filesystem simply had no room left to
+materialize the image, and the kubelet's attempt to use it failed under a status
+string that points you at exactly the wrong layer of the stack.
+
+The thing that fills the disk is the workflow itself. A day of release prep is a
+tight loop — build, `k3d image import`, roll the deployments, repeat — and each
+turn lands another multi-hundred-megabyte image in the node store without
+reclaiming the last one. Nothing prunes between iterations, so the store grows
+monotonically until a pull that should be instant fails for want of space. The
+fix is boring (`docker system prune` on the host, clear out stale images in the
+node, give the loop some headroom) but the diagnosis is the lesson: when a pull
+fails, check the node's disk *before* you re-examine the tag.
+
+The general shape is an old one. `ErrImagePull` means "couldn't get the image,"
+not "couldn't *find* the image" — and "no space left to put it" is a perfectly
+ordinary way to fail to get something. A status string tells you which operation
+failed, not why, and the why is often a layer below where the error is pointing.
+
+## What "release-ready" actually meant today
+
+None of this was a feature. It was tokens that should've been tokens, a config
+screen that should've existed, and two infra failures that looked like one thing
+and were another. That's most of what the last mile of a release is: not building
+more, but making what's already there look and behave like you meant it.
