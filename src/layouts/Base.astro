@@ -8,20 +8,32 @@ interface Props {
   description?: string;
   image?: string;
   noindex?: boolean;
+  type?: 'website' | 'article';
+  article?: {
+    publishedTime?: string;
+    modifiedTime?: string;
+    author?: string;
+    tags?: string[];
+  };
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
 
 const {
   title = 'CARB/IDE2 — a collaborative browser IDE',
   description = 'CARB/IDE2 is an open-source, browser-based collaborative IDE with live terminal sharing, an in-database filesystem, and built-in chat.',
-  // TODO: replace with a rasterized PNG for full social-platform support
-  // (X/Twitter and some scrapers don't render SVG OG images).
-  image = '/og-default.svg',
+  // Rasterized PNG for full social-platform support (X/Twitter and some
+  // scrapers don't render SVG OG images).
+  image = '/og-default.png',
   noindex = false,
+  type = 'website',
+  article,
+  jsonLd,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 const ogImage = new URL(image, Astro.site).toString();
 const cfToken = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
+const jsonLdBlocks = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
 <!doctype html>
@@ -40,15 +52,31 @@ const cfToken = import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate" type="application/rss+xml" title="CARB/IDE2 devblog" href="/rss.xml" />
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={type} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
+    {type === 'article' && article?.publishedTime && (
+      <meta property="article:published_time" content={article.publishedTime} />
+    )}
+    {type === 'article' && article?.modifiedTime && (
+      <meta property="article:modified_time" content={article.modifiedTime} />
+    )}
+    {type === 'article' && article?.author && (
+      <meta property="article:author" content={article.author} />
+    )}
+    {type === 'article' && article?.tags?.map((t) => (
+      <meta property="article:tag" content={t} />
+    ))}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+
+    {jsonLdBlocks.map((block) => (
+      <script type="application/ld+json" set:html={JSON.stringify(block)} />
+    ))}
 
     {cfToken && (
       <script

@@ -57,9 +57,42 @@ const features = [
 const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
   .slice(0, 3);
+
+const siteUrl = Astro.site?.toString().replace(/\/$/, '') ?? '';
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'CARBIDE',
+    url: siteUrl,
+    logo: `${siteUrl}/og-default.png`,
+    sameAs: ['https://github.com/fdimitri/carbide2'],
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'CARB/IDE2',
+    url: siteUrl,
+    description:
+      'CARB/IDE2 is an open-source, browser-based collaborative IDE with live terminal sharing, an in-database filesystem, and built-in chat.',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'CARB/IDE2',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Web browser',
+    url: siteUrl,
+    description:
+      'An open-source, self-hostable browser IDE with real-time collaborative editing, shared PTY terminals, an in-database filesystem, IRC-style chat, and a built-in AI agent.',
+    license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    sameAs: ['https://github.com/fdimitri/carbide2'],
+  },
+];
 ---
 
-<Base>
+<Base jsonLd={jsonLd}>
   <section class="container-wide pt-16 pb-12 lg:pt-24">
     <div class="grid items-center gap-12 lg:grid-cols-2">
       <div>
@@ -161,9 +194,11 @@ const latestPosts = (await getCollection('blog', ({ data }) => !data.draft))
       <h2 class="mt-2 text-2xl font-bold text-carbide-text">CARB/IDE2 in action (actual, current screenshot)</h2>
     </header>
     <img
-      src="/app-screenshot.png"
-      alt="CARB/IDE2 screenshot"
-      class="w-full rounded-lg border border-carbide-line shadow-lg"
+      src="/app-screenshot2.png"
+      alt="CARB/IDE2 screenshot"      width="3839"
+      height="2034"
+      loading="lazy"
+      decoding="async"      class="w-full rounded-lg border border-carbide-line shadow-lg"
     />
   </section>
 </Base>

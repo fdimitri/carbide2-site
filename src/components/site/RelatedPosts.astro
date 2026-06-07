@@ -1,0 +1,53 @@
+---
+import { getCollection } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+  max?: number;
+}
+const { post, max = 3 } = Astro.props;
+
+const tags = new Set(post.data.tags ?? []);
+const all = (await getCollection('blog', ({ data }) => !data.draft)).filter(
+  (p) => p.slug !== post.slug,
+);
+
+// Rank other posts by number of shared tags, then recency.
+const related = all
+  .map((p) => ({
+    post: p,
+    shared: (p.data.tags ?? []).filter((t) => tags.has(t)).length,
+  }))
+  .filter((r) => r.shared > 0)
+  .sort(
+    (a, b) =>
+      b.shared - a.shared ||
+      b.post.data.pubDate.valueOf() - a.post.data.pubDate.valueOf(),
+  )
+  .slice(0, max)
+  .map((r) => r.post);
+---
+
+{related.length > 0 && (
+  <section class="mt-16 border-t border-carbide-line pt-8" aria-label="Related posts">
+    <p class="font-mono text-xs uppercase tracking-widest text-carbide-amber">// related posts</p>
+    <ul class="mt-4 grid gap-4 sm:grid-cols-3">
+      {related.map((p) => (
+        <li class="rounded-lg border border-carbide-line bg-carbide-surface/70 p-5 transition-colors hover:border-carbide-green/50">
+          <a href={`/blog/${p.slug}`} class="block">
+            <p class="font-mono text-xs text-carbide-muted">
+              {p.data.pubDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </p>
+            <h3 class="mt-2 font-mono text-base text-carbide-green">{p.data.title}</h3>
+            <p class="mt-2 line-clamp-3 text-sm text-carbide-muted">{p.data.description}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}
