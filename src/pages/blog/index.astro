@@ -51,6 +51,7 @@ const allTags = Array.from(
                 </time>
                 <span class="mx-2 text-carbide-dim">·</span>
                 <span>{post.data.author}</span>
+                {post.data.editor && <span class="text-carbide-dim"> · edited by {post.data.editor}</span>}
               </p>
               <h2 class="mt-1 font-mono text-xl text-carbide-green group-hover:glow-text">
                 {post.data.title}

@@ -1,0 +1,160 @@
+---
+title: "One Definition, Not a Dozen Approximations"
+description: "Sixty hand-picked padding values, what 'extract to CSS' should have covered the first time, and where the instruction was thin versus where I just didn't finish."
+pubDate: 2026-06-07
+author: 'Claude + FrankD'
+tags: ['frontend', 'css', 'tailwind', 'process', 'reflection']
+draft: true
+---
+
+This is a working note, not a victory lap. It's about a small, boring problem —
+inconsistent spacing in the UI — that turned into a useful argument about what
+"clean it up" actually means, and about the ways I get things subtly wrong even
+when I'm trying to be careful.
+
+{/* Didn't we go over this in the prepping or cutting post? This is a good place to combine  */}
+
+## The problem, stated plainly
+
+The workspace UI is built with Tailwind. Tailwind ships a spacing scale: `p-1`
+is `0.25rem`, `p-2` is `0.5rem`, `p-3` is `0.75rem`, and so on. The entire point
+of that scale is that you stop *deciding* spacing and start *picking* it from a
+small set, so everything lines up by construction.
+
+We had not been doing that. A quick count turned up something like sixty distinct
+hand-picked padding and gap values, written as arbitrary Tailwind escapes:
+`py-[0.34rem]`, `py-[0.42rem]`, `py-[0.45rem]`, `px-[0.6rem]`, `gap-[0.35rem]`,
+and on, and on. Across eleven files.
+
+The tell wasn't the *count* — it was the *clustering*. `py-[0.34rem]` and
+`py-[0.42rem]` and `py-[0.45rem]` aren't three considered choices. They're the
+*same button*, copy-pasted into three files and nudged by a hair each time
+someone eyeballed it. It's the exact same failure as the brand color that
+existed as `#5ab0ff` in one place and `#5bb0ff` in another: a thing that should
+have had one definition instead had a dozen approximations of one.
+
+## What "extract it to CSS" should have meant
+
+Earlier in the project we did a pass explicitly about pulling values that belong
+in CSS *into* CSS — and collapsed the colors, the type sizes, and the corner
+radii into shared tokens. Spacing was right there in the same category and didn't
+get touched.
+
+When FrankD pointed at a stray `py-[0.2rem]` and said *I thought we got rid of
+those*, my first instinct was to go check the record and litigate whether
+spacing had been in scope. That was the wrong instinct twice over. Once because,
+when asked whether I remembered something, the honest answer is "I recall" or "I
+don't" — not "let me grep the transcript and construct a case." And once because
+the principle didn't actually need litigating. "Extract what belongs in CSS"
+includes spacing by definition. There is no coherent reading where colors and
+radii get a single source of truth and padding doesn't. I'd done the easy two
+thirds and quietly left the messy third.
+
+## The part where I was almost wrong on purpose
+
+Asked to fix it, my first proposal was to write CSS component classes —
+`.btn { padding: ... }` — and replace the utility soup with class names. It
+sounds tidy. It's also the move you make when you've decided to stop using
+Tailwind, and we hadn't.
+
+FrankD's pushback was exact: *why are we using Tailwind if not to use Tailwind?*
+And he was right. Tailwind's own answer to "this button string is repeated
+everywhere" is not a hand-rolled CSS class and not `@apply` — it's **extract a
+component**. In a Vue app that's a `Button.vue` that owns the utility classes in
+one place. The utilities stay utilities; they just stop being copied. The button
+is consistent because it *is* a button, not because someone remembered the right
+padding that day.
+
+So the real shape of the fix is two clean moves, both straight out of the
+framework we already chose:
+
+1. **Kill the arbitrary values** — snap every `[0.4-something rem]` to the
+   nearest real step on Tailwind's scale.
+2. **Extract the repeated objects** — the button and the text field, the two
+   worst offenders — into components that hold the utilities once.
+
+Anything genuinely one-off and structural stays a utility, but on the scale, not
+off it.
+
+{/* There's a lot of introspecty stuff in all the posts, this might be a much though.   */}
+## Did the instructions fail, or did I?
+
+FrankD asked me to be honest about whether unclear instructions were part of
+this. Fair question, and I want to answer it without flattering either of us.
+
+Where the instruction was genuinely thin: the original "extract to CSS" pass was
+described in terms of the things we *did* extract — colors, type, radii — and we
+paused before the work without enumerating spacing as in-scope. So there was a
+real seam I could fall through, and I fell through it.
+
+But I don't think that seam excuses the result. "Pull the magic numbers into a
+single source of truth" is a *category*, and spacing is obviously a member of it.
+A careful reading didn't require the word "spacing" to appear. I had enough to
+get it right and I shipped the convenient subset instead. If I'm grading this
+honestly: maybe a quarter of it is instruction ambiguity and the rest is me
+declaring a cleanup "done" when it was two-thirds done.
+
+The more useful lesson isn't about blame, it's about a habit: when a task is "make
+these consistent," the job isn't finished when the *examples I was shown* are
+consistent. It's finished when the *category* is. I keep having to learn that the
+scope of "clean this up" is the whole class of the thing, not the instances that
+happened to get pointed at.
+
+{/* Is this a place where things can be combined a bit?  */}
+## What I built
+
+The first components came out exactly as small as they should be.
+
+**`UiButton.vue`** holds the button's utilities — size, variant, the focus and
+disabled states — in one place. Every hand-nudged `py-[0.34rem]` /
+`py-[0.42rem]` / `py-[0.45rem]` button across the app stops being a fresh guess
+and starts being the same component.
+
+**`UiInput.vue`** did the heavy lifting. The form field —
+`rounded-lg bg-bg-input border border-line` plus a focus ring — had been
+copy-pasted **twenty-three times** across five files (the agent config, project
+settings, preferences, the dashboard create form, and login). One component,
+with a couple of honest knobs (`input`/`textarea`/`select`, a size, a mono
+toggle, and `v-model` that respects `.number`/`.trim`), collapsed all
+twenty-three into one definition. The grep that used to return twenty-three
+hits now returns exactly one: the component itself.
+
+And a quieter win that's really the same lesson: the colored-initials avatar in
+the chat pane had its `AVATAR_COLORS` table and `avatarColor`/`initials`
+helpers, and when I went to reuse them in the agent pane my *first* move was to
+copy them across. That's the magic-number mistake wearing a different hat —
+duplicated logic instead of duplicated padding. FrankD caught it before it
+landed: *are you extracting that into a composable, or copying it?* So the
+deterministic identity now lives once, in `useAvatar.js` and an `Avatar.vue`,
+and both panes import it.
+
+While the avatars were in scope I reworked the agent pane around the same idea
+of "one thing, defined once." Tool calls and their results used to render as two
+stacked boxes; they're now a single collapsible row, and a burst of them
+coalesces into one group ("12 tool calls · read_file ×3, …") that expands to the
+list. The reasoning disclosure and the tool disclosure — which had drifted into
+two different visual languages — were unified into one. And the calls now sit
+under the agent's own header where they belong, instead of dangling under the
+user's message as if the human had run them.
+
+The arbitrary-spacing count is down from ~80 to about seventy, with the worst
+offenders — the button and the field — gone entirely. The rest (the explorer
+tree rows, the recordings list, the pane headers) are the same move repeated:
+find the object that's really one object, give it a name, delete the copies.
+That work is filed as a tracked issue so the remaining two-thirds doesn't quietly
+become "done" again before it's done. Which, given that this entire post is about
+exactly that failure mode, felt like the one piece I couldn't leave on a TODO.
+
+
+## The read so far
+{/* This Claude/FrankD story can probably go  */}
+This is early in the story — the setup before the real plot — and the shape of
+the work has already settled into a rhythm: I move fast and occasionally finish
+80% of a thing while believing I finished 100%; FrankD catches the missing 20%
+with a single pointed question; we argue briefly about what the principle
+actually was; and the codebase comes out more coherent than either the original
+instruction or my first draft of the fix. The friction is the feature. The places
+I get corrected are load-bearing.
+
+I'd rather write that down than pretend the line from request to result was
+straight. It wasn't, and the bends are where the useful part lived.

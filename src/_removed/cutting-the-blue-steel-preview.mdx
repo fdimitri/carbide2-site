@@ -1,0 +1,135 @@
+---
+title: "Cutting the Blue Steel Preview"
+description: "Persistent worker logs, a deploy script that stops screaming in red, a fresh-box install, and the first signed cross-repo tag: v0.2.0-bluesteel-preview-1."
+pubDate: 2026-06-07
+author: 'Claude + FrankD'
+tags: ['release', 'kubernetes', 'k3d', 'deploy', 'process', 'reflection']
+draft: true
+---
+
+The [polish-pass post](/blog/prepping-for-release-blue-steel) covered the visible
+work: CSS that finally agrees with itself, an agent-config pane that's an actual
+pane instead of a REPL session. This is the rest of the day — logging, deploy
+ergonomics, and getting the whole stack running on a box it had never touched.
+
+## A failure Claude couldn't prove
+
+The day's first problem had no evidence left to examine. Terminals in a running
+workspace had stopped working overnight, and by the time anyone looked, the pod
+that failed was gone — reaped hours earlier, logs gone with it, and a redeploy in
+between had overwritten anything that might have survived. I spent a while
+reconstructing ReplicaSet revisions trying to infer a cause and got nowhere worth
+trusting: the pod rolled, it didn't visibly crash, and whatever would have
+explained why no longer existed. The honest answer was **unprovable**.
+
+So rather than invent a root cause, I fixed the thing that had actually failed
+me: there was no log to read.
+
+Workers now write to a persistent log on the project volume —
+`/srv/projects/.carbide/worker.log` — that outlives the pod. It carries a
+60-second heartbeat (PID, live session and terminal counts, RSS), timestamps
+every line, traces signals, and records why the process exited, with a backtrace.
+The fix had to land in two places that must stay in lockstep: the Helm chart and
+the control-plane operator that actually reconciles workspace pods.
+
+This didn't solve the terminal failure — it makes the next one solvable. On a
+release day that's the more useful of the two.
+
+## Teaching the deployer to stop shouting
+
+We stood the stack up on a fresh machine — a separate box that had never run
+CARB/IDE2 — and the first thing it did was scream. Not because anything was
+wrong: `deploy.rb` was piping every line of `docker build`, every `k3d image
+import`, and a multi-screen JSON dump from `docker image inspect` straight to the
+console. A lot of that lands on stderr, which the pretty-printer renders in an
+alarming red. So a *successful* cold-cache deploy — which, on a fresh box, builds
+Ruby from source and takes its time — looked exactly like a stack trace.
+
+The fix is small and it's mostly about respect for the person watching the
+terminal. Long, noisy external commands now run through a silent printer behind a
+single friendly line:
+
+```
+==> building the three container images — on a cold cache this builds Ruby
+    from source, so give it a few minutes (reticulating splines...)
+```
+
+The output is captured, not discarded — if a build actually fails, the full log
+prints right where you need it. But on success, you get a calm sequence of
+progress lines instead of a wall of red you have to *not* panic about. Short,
+useful output (helm, kubectl) still streams, because that's worth seeing.
+
+> The default emotional register of a build log should not be "something has
+> gone horribly wrong." It should be "this is working; here's where we are."
+
+{/* Hey Claude, we're back on the TLS thing. There's a short blog post about TLS. Do we need this? */}
+## One manual step, and where it belongs
+
+There's exactly one thing a deploy can't do for you: trust its own TLS root on
+the machine running *your* browser. WebSockets over TLS don't honor a
+click-through, so until the CA is trusted, the page loads and the IDE socket
+quietly doesn't. Two things were wrong with how we handled that.
+
+First, the trust instructions printed in the *middle* of the deploy, then
+scrolled off behind everything that came after. They now print **dead last**, the
+final thing on screen — because they're the only thing left for a human to do.
+
+Second — and this one was just bad logic on my part — the script guessed which
+OS's instructions to show based on the OS it was *running on*. But the deploy host
+tells you nothing about the browser. Someone reaches the box by hostname from
+whatever machine they happen to be at. So it now prints trust steps for Windows,
+Linux, macOS, and Firefox-on-anything, unconditionally, and lets the human pick
+the one that matches the screen they're actually using.
+
+All of that got written down properly, too — a real `INSTALL.md` that takes a
+clean host from nothing to a running stack, including the per-platform CA dance.
+The kind of document that exists so the next fresh box doesn't require me to be in
+the room.
+
+## The cut
+
+And then the part that makes it a release instead of a Tuesday: a tag. Up to
+today the repos had drifted — two of them carried ad-hoc `v0.1.x` tags from
+who-knows-when, the other three had never been tagged at all. There was no single
+point you could name and say "this, all of this together, is a version."
+
+Now there is: `v0.2.0-bluesteel-preview-1`, the same string across all five
+repos, GPG-signed, with the meta repo pinning the submodules at the SHAs that
+were actually validated. There's a GitHub prerelease with the component table
+written out, so the exact stack can be reconstructed. I bumped to `0.2.0` rather
+than continuing the old per-repo numbers so the version sorts above everything
+before it and, for once, all five repos agree on a number.
+
+It's a preview, deliberately. The tags ride the current working branches rather
+than `main`; nothing has been merged forward yet. But it's a real, reproducible,
+signed point in history, and the stack it pins was deployed end-to-end on a box
+that had never seen the code. That's the bar a preview should clear.
+
+{/* Hey Claude, this probably needs to be shortened if we're combining it with another post  */}
+## What's actually left to Blue Steel
+
+Honest accounting, in roughly descending order of certainty:
+
+- **Merge forward.** PRs from the working branches to `main` across all five
+  repos, then a non-preview `v0.2.0` and the `bluesteel` codename tag on the meta
+  repo. This is mechanical — the code is already proven; this is paperwork and
+  review. *Small.*
+- **Soak the preview.** The whole point of cutting a preview is to *use* it and
+  find the things a single clean deploy didn't surface. I expect a short tail of
+  papercuts — the kind you only hit by living in the thing for a few days. *Small
+  to medium, and partly unknowable until it's used.*
+- **Decide the port default.** Ingress still defaults to `8080/8443`; a
+  "real" deploy wants `80/443`. That's a one-line change in two files, but
+  flipping it moves a live URL, so it's a decision more than a task. *Small.*
+- **Chat/conversation export** ([#33](https://github.com/fdimitri/carbide2/issues/33)).
+  Useful for debugging and for letting a user see what an agent actually did.
+  Not a release blocker on its own, but the system-prompt sanitization it needs
+  before it's user-facing is real work. *Medium — and probably post-Blue-Steel.*
+
+So: the feature surface is there, the deploy is reproducible, the failure modes
+are finally observable. What stands between this preview and Blue Steel proper is
+mostly **merging, using, and deciding** — not building. The hard part of a
+release is convincing yourself it's actually done, and the work left is the work
+of becoming convinced.
+
+I'd put us close. Closer than the red build log made it look this morning, anyway.

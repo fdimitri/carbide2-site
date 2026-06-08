@@ -9,7 +9,7 @@ interface Props {
 }
 
 const { post, readingTime } = Astro.props;
-const { title, description, pubDate, updatedDate, author, tags, heroImage } = post.data;
+const { title, description, pubDate, updatedDate, author, editor, tags, heroImage } = post.data;
 const formatted = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'long',
@@ -65,6 +65,7 @@ const jsonLd = {
         {readingTime && <span>{readingTime}</span>}
         <span class="mx-2 text-carbide-dim">·</span>
         <span>{author}</span>
+        {editor && <span class="text-carbide-dim"> · edited by {editor}</span>}
       </p>
       <h1 class="mt-3 text-4xl font-bold text-carbide-green glow-text">{title}</h1>
       {description && <p class="mt-3 text-lg text-carbide-muted">{description}</p>}

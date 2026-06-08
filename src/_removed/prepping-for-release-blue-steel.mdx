@@ -1,10 +1,10 @@
 ---
 title: "Prepping for Release: Blue Steel"
-description: "The unglamorous work before a release: extracting CSS so it stops looking kludgy, finally building the agent-config pane that should have existed all along, and a couple of infra papercuts — brittle HTTPS and a k3d ErrImagePull that was really a disk-space problem in disguise."
+description: "CSS that finally agrees with itself, an agent-config pane that replaced a rails console workaround, and two infra failures that both lied about their cause."
 pubDate: 2026-06-07
 author: 'Claude + FrankD'
 tags: ['release', 'frontend', 'css', 'kubernetes', 'k3d', 'ui']
-draft: false
+draft: true
 ---
 
 Releases aren't built in the last mile; they're *revealed* there. The feature
@@ -17,44 +17,62 @@ by accident. This is the "Blue Steel" prep log: the polish pass.
 ## CSS, de-kludged
 
 Most of today was pulling style out of the components and into one place. Colors,
-type sizes, corner radii — all of it had been inlined per-component, which is how
-you end up with the brand blue written as `#5ab0ff` in forty files that only
-*coincidentally* agree. I collapsed those into semantic tokens in a single
-`@theme` block (`--color-accent`, `--text-ui-md`, `--radius-ui-sm`, and friends)
-and lifted single-file-component styles up into the shared stylesheet.
+type sizes, corner radii — all of it had been inlined per-component, and the
+colors in particular hadn't just drifted, they'd never agreed in the first place.
+The "brand blue" existed as `#5ab0ff` in one file, `#5bb0ff` in another, a
+near-miss `rgba(90,176,255,.9)` somewhere else, and a couple of components that
+had quietly invented their own blue entirely. Nothing referenced a shared source,
+so "the accent color" was really a dozen approximations of a color that lived
+nowhere. The surfaces and muted-text grays were the same story — close enough to
+look intentional, different enough to look cheap when you put two panels side by
+side.
+
+I collapsed all of it into semantic tokens in a single `@theme` block
+(`--color-accent`, `--text-ui-md`, `--radius-ui-sm`, and friends) and lifted
+single-file-component styles up into the shared stylesheet, so there's now exactly
+one definition of the accent and everything points at it.
 
 The diff is wide and nets out close to even — hundreds of lines in, hundreds out.
-That's the tell that it's a refactor and not a redesign: same pixels, fewer
-decisions behind them. The win isn't visible today. It's the next time someone
-wants the accent a shade brighter and it's one edit instead of a find-and-replace
-and a prayer.
+That's the tell that it's a refactor and not a redesign: same *intended* pixels,
+fewer decisions behind them, and now they actually match. The win isn't fully
+visible today. It's the next time someone wants the accent a shade brighter and
+it's one edit instead of a find-and-replace across a dozen not-quite-identical
+hex strings and a prayer.
 
 ## The agent-config pane that should have always existed
 
 CARB/IDE2 has had agents for a while. What it *didn't* have was any way to
-configure them from the UI — the settings lived wherever settings live when no
-one's built the screen yet. So today: a runtime agent-configuration API on the
-server (`/api/agents`, index/show/update) and an Agent Config pane on the client
-to drive it.
+configure them from the UI. The only way to change an agent's settings was to
+exec into the running pod and drive it from a `rails console` — a Ruby REPL
+inside the container, by hand. That's not a configuration story, that's a
+workaround you'd be embarrassed to document. So today: a runtime
+agent-configuration API on the server (`/api/agents`, index/show/update) and an
+Agent Config pane on the client to drive it.
 
 Why wasn't it there from the start? Because "the agents work" and "you can
 configure the agents" are different milestones, and the first one is the one you
 demo. The config surface is exactly the kind of thing that's easy to defer
-forever — the feature *functions* without it, so it never tops the list. Until
-you're prepping a release and realize a feature you can't configure is a feature
-you're asking users to take on faith.
+forever — the feature *functions* without it (as long as you're willing to open a
+console inside the pod), so it never tops the list. Until you're prepping a
+release and realize a feature you can only configure from a REPL is a feature you
+can't actually ship to anyone.
 
-## A small UI change buys a disproportionate amount of "not shitty"
+## The minor style changes are what made it less turd-like
 
-Worth saying plainly: the agent pane didn't add capability. The agents could
-already do everything they can do now. All the pane did was *surface* it — give
-the settings a home, a shape, a place your eye expects them to be. And that alone
-moved the whole feature from "trust me, it's in there" to "oh, there it is."
+Here's the part that surprised me about today: the thing that moved the product
+furthest from "shitty" wasn't the agent pane — it was the small CSS work. The
+agent config was a genuine, large UX win, but it's a *new capability* you notice
+and then move past. The style pass is different. Once the accent was actually one
+color, the panels lined up, the type sizes stopped quietly disagreeing — the
+whole thing just stopped reading as a prototype. No single change there was big.
+The sum of them is the difference between "a clever demo" and "a thing that looks
+like someone meant it."
 
-That's the quiet leverage of UI work. A change that touches zero behavior can
-still change how the product *feels* by a lot, because most of "feels finished"
-is just things being where you expect them. It's the cheapest quality you can
-buy, and it's almost always undervalued because it doesn't show up as a feature.
+That's the quiet leverage of style work. A pile of changes that each touch zero
+behavior can still change how the product *feels* by a lot, because most of
+"feels finished" is just things being consistent and where you expect them. It's
+the cheapest quality you can buy, and it's almost always undervalued because no
+individual diff in it looks like it mattered.
 
 ## Two infra papercuts
 
