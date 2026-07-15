@@ -4,7 +4,7 @@ const navLinks = [
   { href: '/features', label: 'Features' },
   { href: '/blog', label: 'Devblog' },
   { href: '/about', label: 'About' },
-  { href: '/docs', label: 'Docs' },
+  { href: 'https://docs.carbidecore.online', label: 'Docs', external: true },
   { href: '/contact', label: 'Contact' },
 ];
 const path = Astro.url.pathname;
@@ -26,14 +26,16 @@ const isActive = (href: string) =>
 
     <nav aria-label="Primary" class="hidden md:block">
       <ul class="flex items-center gap-1 font-mono text-sm">
-        {navLinks.map(({ href, label }) => (
+        {navLinks.map(({ href, label, external }) => (
           <li>
             <a
               href={href}
-              aria-current={isActive(href) ? 'page' : undefined}
+              aria-current={!external && isActive(href) ? 'page' : undefined}
+              rel={external ? 'noopener' : undefined}
+              target={external ? '_blank' : undefined}
               class:list={[
                 'rounded px-3 py-1.5 transition-colors',
-                isActive(href)
+                !external && isActive(href)
                   ? 'text-carbide-green'
                   : 'text-carbide-muted hover:text-carbide-text',
               ]}
@@ -73,13 +75,15 @@ const isActive = (href: string) =>
     class="border-t border-carbide-line bg-carbide-bg md:hidden"
   >
     <ul class="container-wide flex flex-col py-3 font-mono text-sm">
-      {navLinks.map(({ href, label }) => (
+      {navLinks.map(({ href, label, external }) => (
         <li>
           <a
             href={href}
+            rel={external ? 'noopener' : undefined}
+            target={external ? '_blank' : undefined}
             class:list={[
               'block rounded px-3 py-2',
-              isActive(href)
+              !external && isActive(href)
                 ? 'text-carbide-green'
                 : 'text-carbide-muted hover:text-carbide-text',
             ]}

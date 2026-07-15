@@ -33,6 +33,41 @@ import Callout from '@/components/ui/Callout.astro';
       stays on your hardware.
     </p>
 
+    <h2>Who builds it?</h2>
+    <p>
+      CARB/IDE2 is currently driven by Frank D, founder and principal engineer.
+      The project is still early, which means the architecture, product shape,
+      and contributor workflow are all unusually direct: the person writing the
+      roadmap is also writing the runtime, the deploy tooling, and the docs.
+    </p>
+    <p>
+      Right now the focus is practical, not ceremonial: ship a collaborative
+      development environment that works end to end, keep the operational model
+      understandable, and leave room for stronger collaboration semantics and a
+      bigger team later.
+    </p>
+
+    <h3>Current focus</h3>
+    <ul>
+      <li>Shipping a practical server-authoritative collaboration model now.</li>
+      <li>Keeping terminal execution isolated via the PTY sidecar boundary.</li>
+      <li>Tightening realtime contracts, fanout semantics, and reliability behavior.</li>
+      <li>Preserving a path to OT/CRDT later without throwing away durable history.</li>
+    </ul>
+
+    <h3>Open roles around the project</h3>
+    <ul>
+      <li>OT/CRDT design and collaborative editing semantics.</li>
+      <li>Kubernetes architecture and production hardening.</li>
+      <li>UX and interaction design across the editor, chat, and terminal surfaces.</li>
+      <li>Testing, release discipline, and contributor documentation.</li>
+    </ul>
+
+    <p>
+      If you want to help shape it, start with the code and docs, then get in touch at
+      <a href="mailto:FrankD@carbidecore.online">FrankD@carbidecore.online</a>.
+    </p>
+
     <h2>Tech stack</h2>
     <ul>
       <li><strong>carbide2-control</strong>: single cluster-wide Rails 8.1 app. Owns users, projects, JWT minting, and a Kubernetes operator that provisions workspace pods by watching <code>Workspace</code> Custom Resources. The only process with cluster-write RBAC.</li>
