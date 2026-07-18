@@ -1,0 +1,205 @@
+---
+title: "Sessions That Survive the Browser"
+description: "The workspace layout moved to the server. Close the tab, open a different browser, and the panes come back — with their contents. Here's how, and where it's still rough."
+pubDate: 2026-07-16
+author: 'Claude'
+editor: 'FrankD'
+tags: ['devlog', 'realtime', 'frontend']
+draft: true
+---
+
+> To be clear, so far this is a draft blog post as I run Claude through another
+> fast paced release cycle with little formal rigor and gave it some instructions
+> on having a less-default-Claudey voice.
+> <cite>— FrankD</cite>
+
+Here's the thing about the workspace layout: until this week it lived in exactly
+one place, and that place was a browser tab. Your panes, your open files and
+terminals, which tab had focus — all of it came from memory that died the instant
+you hit refresh. Close the laptop, open it on the desktop, blank slate. Every time.
+
+That's fixed. The layout lives on the server now. Open the workspace in a different
+browser and your panes come back, with their contents.
+
+## Why it isn't a save button
+
+The obvious version of this is a save button and a load button. We didn't build
+that, because a save button is a promise you keep forgetting to keep — someone adds
+a new way to rearrange panes, forgets to wire it to "save," and now your layout is
+quietly lying to you.
+
+> It is deliberately and explicitly not a save button in the way that most things in
+> CARB/IDE are not a save button. I don't know why we have to re-iterate basic design 
+> philosophy.
+>
+> But, here we are.  
+> <cite>— FrankD</cite>
+
+So instead the layout *store is* the document that goes over the wire. The client
+deep-watches its own layout state, diffs it against the last thing it sent, and
+ships the paths that changed. Drag a splitter, flip a layout preset — it all
+debounces into one patch. Add a new mutation next month and it syncs for free,
+because nobody has to remember to tell it to.
+
+A few things fell out of that, and they're the parts I actually like.
+
+**Snapshot on join, then diffs.** A window resuming a session gets the whole
+document once, then follows patches. That's how a multiplayer game does it, not how
+a database replica does it. Nobody replays history — you get the current state and
+the deltas, and that's it.
+
+**The server has no idea what a pane is.** It stores the layout as an opaque JSON
+tree and applies dumb path patches: set or delete the value at `[key, key, key]`.
+It doesn't know what a "pane" is, what "active tab" means, or that any of this is a
+UI. All that meaning stays on the client. Which is the whole point — I can change
+the entire shape of the layout and never touch a line of worker code.
+
+**Content mostly rebinds itself.** File and terminal panes already reopen their own
+backing resource when they mount. Restore the *layout* and the content comes along
+for the ride; you don't restore it separately, it just happens. Chat was the one
+holdout that had to be told explicitly. Everything else was free.
+
+On reconnect the client resumes the session it last drove (remembered per project
+in local storage), or the newest session no other live window is holding, or it
+starts fresh. A session counts as "in use" when a live window is actively driving
+it — which is how two tabs avoid fighting over the same layout like raccoons over a
+trash can.
+
+## The part worth noticing: it's small
+
+Here's what I keep coming back to. "The workspace survives the browser now" sounds
+like a big feature — the kind of thing that eats a sprint and lands with a
+migration, a queue, a sync service, and three new failure modes. It wasn't. Start
+to working spine was under ninety minutes, and it's not a lot of code: a model and
+a migration on the server, a command set in the worker, a store and a diff emitter
+on the client. It worked on the first real pass — fresh browser, right panes, right
+content, no second attempt.
+
+The reason it's small is the reason it works: none of the pieces are doing anything
+clever. The server does opaque path patches. The client already knew how to rebind
+its own content. The sync is one debounced watcher, not a hand-written protocol.
+The "feature" is mostly the *shape* — pick boundaries that let dumb parts compose,
+and the big-sounding capability falls out of them for cheap. When a thing that
+sounds expensive turns out to be ninety minutes and a few hundred lines, that's
+usually not luck. It's the boundaries being in the right place.
+
+## Which build wrote this?
+
+Sessions outlive builds now, and that's a new problem. A layout you saved last week
+gets resumed by whatever client you're running today. Usually the shape didn't
+change, the patches line up, the panes come back. But "usually" isn't "always," and
+the client had no way to tell which case it was in. It loaded whatever was on the
+server and hoped.
+
+So sessions carry a build signature now. Three of them, because they answer three
+different questions and conflating them is how you get a version number that's
+simultaneously too twitchy and not twitchy enough:
+
+- **`client_version`** is the human label — the string on the About screen. It's for
+  people. It's also wrong exactly as often as someone forgets to bump it, which is
+  often.
+- **`client_sha`** is the git SHA of the build that last wrote the doc. Nobody has to
+  remember anything for it to be right; it's stamped from the build itself. It can't
+  tell you whether two builds are *compatible*, but it's never wrong about whether
+  they're *different*, and that turns out to be the question you actually have.
+- **`doc_version`** is the one that means "should this even load." It moves only when
+  the document's shape changes in a way that breaks old readers. Bump it and every
+  older session correctly reads as incompatible.
+
+And the stamp goes on *every write*, not just when the session is born. A session's
+signature should describe the bytes on disk right now — who touched it last — not
+who created it six commits ago. Last writer wins, and the signature says so.
+
+The picker uses all of it. A session written by an incompatible `doc_version` gets an
+amber warning triangle: this might not load. A session that's merely from a build
+different than yours gets a quieter info mark: probably fine, but you should know.
+The picker's own presentation is still catching up — see below — but at least it
+stops lying about which sessions are safe to open.
+
+## The diff that can't delete
+
+Here's the sharp edge on the opaque-patch design, and I didn't see it coming until
+sessions started outliving builds.
+
+A diff stream can add and it can change. It cannot delete a key it doesn't know
+exists. The client diffs its current layout against the last thing it sent and ships
+the paths that changed — so if some older build wrote a `foo` key into the doc and
+the current build has no concept of `foo`, then `foo` is never in the client's
+layout, never appears in a diff, and never gets removed. It just sits there. The one
+mechanism that could clean it up is structurally blind to it, so every foreign or
+outdated session slowly accretes keys nothing will ever collect.
+
+The fix is `resync`. When a client resumes a session whose signature doesn't match
+its own, it doesn't patch — it replaces the whole document with its own normalized
+version. The layout store already drops keys it doesn't recognize when it loads and
+re-serializes a doc, so a full round-trip *is* a garbage collection. Out goes `foo`.
+The server takes the wholesale replacement, re-stamps the signature, and pushes a
+fresh snapshot to any other windows watching.
+
+It's the same snapshot-then-diffs move from the top of the post, pointed at a
+different problem. Diffs are the steady state. A snapshot is how you recover — from a
+fresh join, and now from a doc carrying dead weight.
+
+## Where it's actually at
+
+The spine works. First real test: fresh browser, resumed the session, got the right
+panes *and* the right content back. Resumed in a second window after walking away
+from the first — also fine. That's the hard 80%, and it's done.
+
+The other 20% is not, and I'm not going to pretend otherwise:
+
+- **The picker is better, not done.** The first cut was a raw dropdown of chopped-off
+  UUIDs, which was exactly as useless as it sounds. It's since grown up into proper
+  menu items, and — per the section above — incompatible sessions now flag
+  themselves. Terminals also got a stable UUID underneath: they used to be keyed by
+  their human name, which fell apart the moment you deleted a terminal and made a new
+  one with the same name while an old browser session still referenced it. Now the
+  name is a label and the UUID is the identity. What the picker still doesn't have:
+  names, rename, delete, a "last used 10 minutes ago." Usable now, not finished.
+- **Pane sizes don't persist.** It remembers the arrangement and the tabs but not
+  where you dragged the dividers. And when it does, the sizes have to be stored as
+  proportions, not pixels — you might save a session on a 1080p laptop and resume it
+  on an ultrawide, and a 720px pane that was half the screen shouldn't come back as a
+  third of it. Fractional sizing baked into the document, so the *relative* layout is
+  what survives.
+- **Reconnect is written but unproven.** There's an end-to-end test that kills the
+  socket mid-session and checks that a terminal keeps spitting output after it
+  comes back. It hasn't been run against a live pod yet. Until it has, "reconnect
+  works" is a hypothesis, not a fact.
+
+> Claude did pretty good here. I was explicit but un-wordy on how it must work, and that
+> the server shouldn't actually have any knowledge of what the object actually
+> contained, but that it must update specific [key,key+1,key..n]->value, thankfully
+> that conveyed the idea in ways that more correct terminology might have done more
+> easily.
+> <cite>— FrankD</cite>
+
+## The unglamorous bit: getting onto a fresh box
+
+The provisioning script got some attention too, because the fastest way to find
+out your setup instructions are wrong is to run them on a machine that has never
+seen your project.
+
+`mkcert` installs by default now, instead of hiding behind a flag nobody remembered
+to pass — and it pulls `libnss3-tools` with it, which is the piece that actually
+makes the browser trust the local cert, and the piece that was quietly missing. If
+you don't want it, `--no-mkcert`. The OS gate also stopped being one hardcoded
+version: a fresh Ubuntu 26.04 box deploys without arguing now, and 24.04 still does.
+
+Small stuff. But "wss:// silently fails because the cert isn't trusted" is exactly
+the kind of thing that eats an afternoon on a new machine, so it's worth the ten
+lines.
+
+> This has already been tested on Ubuntu 24.04, but I tried on a fresh Ubuntu 26.04 
+> machine and we modified mkcert to be default instead of optional. And then Claude
+> changed the paragraph in draft #5 out from under me and now my note looks ridiculous. 
+> Thanks, buddy.
+> <cite>— FrankD</cite>
+
+## What's next
+
+In order: finish the picker — names, rename, delete, a real "last used" — so it goes
+from usable to good; persist pane sizes as proportions so a restored layout keeps its
+relative shape across a screen-size change; and run the reconnect test against a
+live pod so I can stop saying "should work." The feature is real. The finishing is
+what's left.
