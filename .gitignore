@@ -8,3 +8,8 @@ dist
 *.log
 .vscode/*
 !.vscode/extensions.json
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
