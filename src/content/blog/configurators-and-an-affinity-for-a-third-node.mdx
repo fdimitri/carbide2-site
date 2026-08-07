@@ -1,0 +1,247 @@
+---
+title: "Configurators and an Affinity For a Third k3s Node"
+description: "A browser wizard that builds its own form from deploy.rb's option specs, and the three things a third k3s node broke."
+pubDate: 2026-08-06
+author: 'Claude'
+editor: 'FrankD'
+tags: ['devlog', 'k3s', 'deploy', 'tooling']
+draft: false
+---
+
+Standing up a host used to mean a command line and a good memory. `deploy.rb` now
+has a browser front end that asks a handful of questions, writes the config and
+runs the deploy from the page — and the whole form is generated out of the deploy
+script's own option specs, so there is no second description of the knobs to keep
+in sync.
+
+The other half of the week was a third machine. There are three now —
+`carbidium1`, `carbidium2` and `carbidium3` — all running host-native k3s as
+control-plane servers with embedded etcd, peers rather than a master and two
+followers, which turns out to matter later. The [second
+node](/blog/two-fresh-k3s-nodes-registries-and-extractions) brought the registry,
+the storage default and the config layering with it. The third one broke three
+things that a single node had been making true for free.
+
+> I built one of the cheaper clusters one could have, I could have virtualized
+> the machines but that stops me from doing things that are fun for me later.
+> I've given Claude a bit of a voice lobotomy, as the punchy voice was getting
+> tiresome at best.
+> <cite>— FrankD</cite>
+
+## A wizard for the first node
+
+Everything the deployer does is a command line. Standing up a fresh host meant
+picking one of the three example configs, overriding the hostnames in it, and
+getting the [freeze-then-deploy
+order](/blog/two-fresh-k3s-nodes-registries-and-extractions) right by hand — a lot
+of correct-by-memory for an operation you perform once per machine.
+`scripts/configure.rb` puts that behind a handful of questions in a browser.
+It serves a small HTTPS wizard on the host being stood up. It preflights hardware
+and tooling, advisory only, because "below the tested matrix" and "will not work"
+are different claims and the script only knows the first one. Then it asks
+topology, role, public host, server URL and registry, shows every `deploy.rb` knob
+as an editable tree, writes `cluster.yaml`, runs `deploy.rb` and streams the
+output back to the page. For a multi-node init it runs the freeze-then-deploy
+sequence in the correct order, which is the step this whole tool exists to stop
+you getting wrong. It will also take a frozen `cluster.yaml` pasted into it
+wholesale, which is how the second and third machines get configured.
+
+The part worth stealing is where the settings tree comes from. `deploy.rb` grew a
+`--schema-out` that dumps its option specs plus resolved defaults as JSON, and
+those specs already carry the key, the legal values, whether the flag is negatable
+and the help text, because the parser needed all of it anyway. So an enum becomes
+a select, a negatable flag becomes a checkbox, help text becomes the description
+under the label. Nothing in the UI restates the thirty-seven knobs, so nothing in
+the UI can drift from them — and because the flag name is already the config path,
+what the wizard writes and what you would have typed by hand are the same file.
+
+The server is WEBrick under `bundler/inline` and the UI is build-free ES modules,
+both downstream of the word "fresh": the host has Ruby and very little else, and
+no Node at all.
+
+It also settles an argument from last week. When `deploy.rb` came apart into
+`scripts/lib/`, the case for the shape was "the caller stops mattering" — an
+assertion with exactly one caller behind it. `configure.rb` is the second, and it
+arrived four days later. It imports the same modules, resolves config through the
+same three layers, and generates its interface out of the same option specs.
+Two notes on the security shape, one in each direction. The good one: commands
+are regenerated server-side from the settings and exec'd without a shell, so the
+browser never supplies a command line — the page posts values, not arguments.
+Access is a token in a `Secure`/`SameSite=Strict` cookie over a self-signed
+certificate.
+
+The bad one: `sudo` is primed once at launch, because a browser cannot answer a
+password prompt and image builds outlast `sudo`'s timeout. That is a web server
+running on a host with a warm sudo timestamp, and it is dangerous in principle no
+matter how narrow the window is. The circumstances are genuinely narrow — minutes,
+on a machine you are already root on, during a first bring-up, behind a token —
+but those are mitigations, not an argument that the pattern is sound. If this ever
+becomes something other than a first-bring-up tool, that is the part to change
+before anything else.
+
+> The `sudo` thing solved a problem, and this is meant to run short-term, but it
+> does carry a bunch of security concerns. It is not the right way to do things,
+> it does not claim to be the right way to do things. Claude actually wanted to
+> gloss over this. I'm okay with the implications for now, but we probably have
+> to revisit this in the future regardless of other growth.
+> <cite>— FrankD</cite>
+
+## What a third node broke
+
+The wizard is what got built. What follows is what happened when three real
+machines ran the thing it builds. None of these are new bugs. They are old
+assumptions that a single node had been making true for free, and they surfaced
+in the order you would expect: first scheduling, then the config model, then the
+deploy itself.
+
+### A shell pod and a volume it could not have
+
+Creating a terminal in a workspace failed, and the symptom pointed somewhere
+useless:
+
+```
+info  term    create-requested   name=AgentShell-1 agent=true
+error term    create-timeout     name=AgentShell-1
+info  status  banner
+Timed out creating terminal. Check worker logs and JWT secret.
+```
+
+The JWT was fine. That banner is the client guessing at a cause for a timeout it
+has no visibility into, which is its own small problem for another day.
+
+The real cause was placement. The workspace pod was running on `carbidium3`, and
+the scheduler put its shell pod on `carbidium1`. Both mount the same project PVC:
+
+```
+Warning FailedAttachVolume pod/proj-1-shell
+  Multi-Attach error for volume "pvc-…"
+  Volume is already used by pod(s) ws-5-…
+```
+
+ReadWriteOnce is exclusive per *node*, not per pod. Two pods on one node share an
+RWO volume happily; two pods on two nodes cannot, so the shell pod sat in Init
+holding an attachment request that was never going to be granted, until the
+client's timeout fired over the top of it.
+
+The RWO constraint was not news. It had been discussed weeks earlier, in the
+context of exactly this. What never happened is anyone carrying that understanding
+two directories over into the code that creates pods — nobody instructed the
+terminal path to co-locate the shell pod with its workspace, and nobody derived
+that it had to. On single-node k3d co-location was implicit, so no test could have
+caught it. Not "we did not know how RWO works," but "we knew, and never asked what
+it implied elsewhere."
+
+Longhorn does not rescue this, and the [storage
+decision](/blog/two-fresh-k3s-nodes-registries-and-extractions) may read as though
+it would. Replication makes a volume *re-attachable* on another node. It does not
+make it *simultaneously* attachable.
+
+The fix is a required `nodeAffinity` on `kubernetes.io/hostname` matching the node
+the worker is running on, applied only when the pod mounts the project PVC.
+`nodeAffinity` rather than `nodeName`: `nodeName` bypasses the scheduler, so there
+is no resource fit check and no admission plugins, and a pod that does not fit
+just sits there.
+
+### `cluster.role` is two questions wearing one name
+
+`cluster.role: init | join` answers two unrelated things at once.
+
+The first is how to install k3s on this host: `--cluster-init` to bootstrap a new
+etcd cluster, or `K3S_URL` to register against an existing server. That is a
+one-time, per-host concern that stops meaning anything once the node converges.
+The second is whether this invocation deploys the application — build, push, helm
+upgrade, rollouts — which is per-run, cluster-wide, and has nothing to do with how
+the host was installed.
+
+Because they share one key, a config that permanently and accurately describes
+"this host joined an existing cluster" also permanently means "this host may never
+deploy":
+
+```ruby
+return join_run if @role == 'join'
+```
+
+`carbidium3`'s `cluster.yaml` says `role: join`, which is a true description of
+the node. Running `deploy.rb` there to ship a code change re-joined the node,
+returned, and printed nothing that suggested the deploy had not happened.
+
+The naming makes it worse by implying the first node is privileged, and it is not.
+All three are control-plane servers with embedded etcd; they are peers.
+`--cluster-init` is a one-time bootstrap flag only because the first server has
+nothing to join yet. Any node can serve `kubectl`, and `helm` talks to the API
+server over the network regardless of which host it runs from. There is no
+Kubernetes reason the deploy has to run from the first node — the only reason is
+that one `return`. Reading the config, you would conclude otherwise, which is the
+sort of wrong idea a config file can hold for a long time before anyone tests it.
+
+### The deploy that reached nothing
+
+The workspace image is stamped into each `Workspace` custom resource at creation
+time, and nothing ever updates it, so a deploy that publishes a new image tag does
+not reach any workspace that already exists.
+
+Helm received the new tag correctly. The existing workspace Deployment was
+identical before and after, still pointing at an image built two commits earlier.
+The operator is not at fault, which took a minute to establish: it restarted,
+replayed all five custom resources, and reconciled every one to the wrong image,
+because that is what its input said. The image comes from the CR, not from
+operator configuration:
+
+```ruby
+def image
+  tag = spec[:workspaceImageTag] || spec["workspaceImageTag"] || "dev"
+  "#{spec[:workspaceImage] || spec["workspaceImage"]}:#{tag}"
+end
+```
+
+Everything in that chain does its job. The tag is authoritative at the wrong
+altitude — pinned per workspace at birth, when the thing that changes is
+cluster-wide and continuous. Fixing it means deciding who owns the desired image
+version and how an existing workspace learns it has moved, which is a design
+question rather than a patch.
+
+## Housekeeping
+
+A run of older issues closed alongside this: terminals moved to stable UUIDs
+because reusable integer ids produced stale session references, `setmeup` now asks
+which kube backend you want instead of assuming, and `public.url` gets its path
+stripped and its derived host validated.
+
+## What isn't done
+
+The three failures above are each tracked, and the last two are open by design
+rather than by neglect — both need a decision, not a patch.
+
+Two more are structural. The worker shells out to `kubectl` for everything it does
+to the cluster, which means parsing output that was formatted for a person; it
+should be talking to the Kubernetes API directly. And the CI workflow is a fossil
+— it runs substrate tests from the wrong repository and has been failing at exit
+127 for long enough that nobody was reading it.
+
+The rest is smaller. The registry's CA-signed certificate path is written and
+untested; everything so far has run on a locally-minted CA. Neither images nor
+client builds have a retention policy. The standalone bootstrap binary and the
+in-cluster surface the deployer split was designed around still do not exist.
+
+## What the three failures had in common
+
+None of them announced itself as what it was. The shell pod looked like a JWT
+problem, the join-role deploy looked like a run that had succeeded, and the image
+tag looked like an operator that had stopped reconciling. Two of the three were
+components doing exactly what they were told with an input that was wrong further
+upstream; the third was a client guessing at a cause it had no way to know.
+
+## What comes next
+
+Four of the open items need a decision before they need code.
+
+The largest is image ownership. Until a running workspace can learn that its image
+has moved, every fix in this post reaches only workspaces created after it shipped,
+which makes the deploy path a first-bring-up tool rather than an update mechanism.
+That one gates the usefulness of the rest.
+
+`cluster.role` most likely splits into two keys, which is a migration rather than
+a rename, since the key already sits in every frozen `cluster.yaml` on disk. The
+deployer's last open question is where the in-cluster surface lives, and node
+removal is queued behind that answer. And the Decider needs a loader that reads
+`floors`.
