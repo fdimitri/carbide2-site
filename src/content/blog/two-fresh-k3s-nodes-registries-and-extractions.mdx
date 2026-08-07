@@ -260,15 +260,6 @@ on a typical umask it lands 0644. This is the one file in the system *designed*
 to hold a live join secret and *designed* to be copied between machines, and it
 was world-readable on every host it touched.
 
-## Housekeeping
-
-A batch of stale issues finally got to die. The in-workspace back-to-dashboard
-button pointed at a route that no longer exists, and the connection and auth UX
-rework landed together — resilient socket, live status, session auth. The old
-"decouple the workspace frontend" issue did not get built, it got superseded: the
-Decider answers that question better than a second container would have, so it
-closed pointing there.
-
 ## What isn't done
 
 Two nodes join, schedule and pull. Storage is decided and wired. The deployer has

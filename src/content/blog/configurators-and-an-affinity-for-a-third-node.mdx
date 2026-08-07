@@ -22,10 +22,12 @@ node](/blog/two-fresh-k3s-nodes-registries-and-extractions) brought the registry
 the storage default and the config layering with it. The third one broke three
 things that a single node had been making true for free.
 
-> I built one of the cheaper clusters one could have, I could have virtualized
+> I built one of the cheaper clusters one could have with 3x Lenovo M75s Gen2s
+> with 64GB of RAM in 2 of them and 24GB in the third. I could have virtualized
 > the machines but that stops me from doing things that are fun for me later.
-> I've given Claude a bit of a voice lobotomy, as the punchy voice was getting
-> tiresome at best.
+>
+> Also, I've given Claude a bit of a voice lobotomy, as the punchy voice was
+> getting a bit tiresome.
 > <cite>— FrankD</cite>
 
 ## A wizard for the first node
@@ -202,10 +204,9 @@ question rather than a patch.
 
 ## Housekeeping
 
-A run of older issues closed alongside this: terminals moved to stable UUIDs
-because reusable integer ids produced stale session references, `setmeup` now asks
-which kube backend you want instead of assuming, and `public.url` gets its path
-stripped and its derived host validated.
+Two smaller deploy-side fixes went in the same day: `setmeup` now asks which kube
+backend you want instead of assuming, and `public.url` gets its path stripped and
+its derived host validated.
 
 ## What isn't done
 
