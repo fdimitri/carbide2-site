@@ -8,6 +8,8 @@ tags: ['devlog', 'k3s', 'deploy', 'storage']
 draft: false
 ---
 
+import FrankD from '@/components/ui/FrankD.astro';
+
 The picker served the wrong client. You would open a workspace on the new box and
 get a build with none of the recent UI in it — no picker, no reset specs, an old
 router that bounced you back to the dashboard. The build was there. The code that
@@ -260,16 +262,32 @@ on a typical umask it lands 0644. This is the one file in the system *designed*
 to hold a live join secret and *designed* to be copied between machines, and it
 was world-readable on every host it touched.
 
-## What isn't done
+## A Guest appearance by FrankD and the next steps on these issues
+<FrankD>
+In the same vein as the work here, the control package needs changes. It can
+currently provision workspace pods, and that's good. But near-term it also has
+to be able to cordon/drain/remove a node and get the pods somewhere else. It
+needs to destroy workspaces, have some AAA (authentication, authorization
+and accounting).. and the list goes on.
 
-Two nodes join, schedule and pull. Storage is decided and wired. The deployer has
-a clear pre-cluster line down the middle of it. That is the good news.
+Pod version rolling got broken somewhere along the way, so now we have to be able
+to deploy carbide2-control and carbide2-(server|worker) updates **from** 
+carbide2-control. The first step is it needs to know what's available locally (registry), 
+much as the client picker does right now. After that, it needs to be able to know what's
+available remotely (Git remotes, how do we update?) so you're not building updates from
+the CLI to put in the registry. 
 
-Node *remove* does not exist. Adding one is scripted; taking one out — drain,
-cordon, delete, without wedging anything — is not, and it belongs to the
-deployer-shape decision rather than the bring-up test that just closed.
+But before all of that...
 
-And the commit-time ordering is only live where the image has been rebuilt, so a
-node still running the old server and control images will keep handing out an
-ancestor until it rolls. The tools above will prune a confused node in the
-meantime.
+The dependency on executing `kubectl` has to go. It was barely okay for the initial
+development, but now if things are going to depend on touching Kubernetes we should
+be doing them more correctly. That means no executing things when there are documented
+APIs with helper libraries available.
+
+Claude would like to talk about other things that don't matter -- 'the commit-time
+ordering is only live where the image has been rebuilt,' had been drafted by Claude,
+for example. That doesn't matter because to my knowledge there is precisely one k3s 
+install and one k3d install of CARB/IDE2. A marketing-esque site is fine, but
+it can get a little bit too silly while being a little bit too serious.
+</FrankD>
+

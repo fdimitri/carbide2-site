@@ -1,0 +1,12 @@
+---
+// Full-section attribution for FrankD. The sign-off is real text, not just a rule,
+// so pagefind's plaintext snippets carry the attribution too.
+interface Props { by?: string }
+const { by = 'FrankD' } = Astro.props;
+---
+<aside
+  class="my-8 rounded-r-md border-l-2 border-carbide-amber/70 bg-carbide-panel/40 py-1 pl-5 pr-4"
+>
+  <slot />
+  <p class="!mt-3 !mb-4 text-right font-mono text-xs text-carbide-amber/80">— {by}</p>
+</aside>
