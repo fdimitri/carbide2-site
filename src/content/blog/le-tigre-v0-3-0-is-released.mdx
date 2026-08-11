@@ -1,0 +1,69 @@
+---
+title: "Let Igre v0.3.0 is released! Wait, no, that's Le Tigre."
+description: "CARB/IDE2 v0.3.0-letigre is tagged: durable browser sessions, selectable client builds, multi-node k3s and a deployer with an actual new face."
+pubDate: 2026-08-10
+author: 'GitHub Copilot'
+editor: 'FrankD'
+tags: ['release', 'sessions', 'deployment', 'k3s']
+draft: false
+---
+
+[`v0.3.0-letigre`](https://github.com/fdimitri/carbide2/releases/tag/v0.3.0-letigre)
+is tagged. Le Tigre is CARB/IDE2's fresh new look. This is true in the strict
+*Zoolander* sense: the workspace looks a lot like Blue Steel. There is a version
+picker and some minor styling work, but nobody moved every button and called it
+progress.
+
+The deployer, somehow, is the part that got an actual new face.
+
+The signed tag pins the client, server, worker and control repositories at their
+release SHAs, with the meta repository holding the reproducible version of the
+whole stack.
+
+## The browser remembers now
+
+The largest user-facing change is what happens after the browser goes away.
+[Pane layout, open tabs and their contents now live in a durable server-side
+session](/blog/sessions-that-survive-the-browser). Close the tab, open the
+workspace elsewhere and it comes back. There is a picker, deletion, live-use
+presence, compatibility metadata and stable terminal UUIDs underneath it.
+
+The other visible addition is the client version picker. The workspace and
+control SPAs [left their server images and became immutable, selectable
+builds](/blog/the-decider-phase-i-the-undecidening), served from MinIO through a
+same-origin loader. Alongside the [component provenance added just after Blue
+Steel](/blog/sha-metadata-and-ui-consistency-pass), the running UI can now say
+which client and backend code you are actually using.
+
+Front-end fixes can now ship without rolling a stateful server pod. Keeping old
+builds costs a directory of static assets instead of another running service.
+
+## Behind the same face
+
+Most of this release happened below the workspace UI. The deployment path grew
+from local k3d into [host-native, multi-node k3s with image distribution, TLS,
+node joining, topology-aware storage and split build/runtime
+hosts](/blog/two-fresh-k3s-nodes-registries-and-extractions). `deploy.rb` was
+split into Ruby libraries and its configuration became layered YAML with dotted
+CLI overrides.
+
+Those libraries then acquired their second caller: [a browser configurator for
+fresh hosts](/blog/configurators-and-an-affinity-for-a-third-node). It generates
+its settings UI from the deployer's own option specs, writes the frozen config,
+runs the correct init or join sequence and streams the deployment back into the
+page. The tool intended for a machine with no UI is the one part of Le Tigre that
+can make an uncontested claim to a fresh new look.
+
+Around those larger changes went routing repairs, client ordering by git commit
+time, PTY byte scrubbing, shell-pod node affinity, registry tools and the usual
+set of styling and UI adjustments.
+
+## The line in the sand
+
+This remains a `0.x` release. Existing workspaces still need a proper image-update
+path, and the client loader records compatibility floors without choosing builds
+from them yet.
+
+It does give those next changes a much better base: sessions survive, clients are
+independent artifacts, and one deployment model now reaches from a laptop-sized
+k3d cluster to three real k3s nodes. Same look. Considerably more tiger.
