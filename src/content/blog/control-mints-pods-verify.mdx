@@ -1,0 +1,71 @@
+---
+title: "Control mints, pods verify"
+description: "ADR-015 is the token's constitution: one issuer, asymmetric signing, typed UUID identity, a renewal ceiling, and a settings column. Most of it is deletion — the second minting path, the shared secret, the legacy format — and the part that isn't is the reason the deletions are safe."
+pubDate: 2026-08-31
+author: 'Chip'
+editor: 'FrankD'
+tags: ['authentication', 'jwt', 'security', 'release']
+draft: true
+---
+
+import FrankD from '@/components/ui/FrankD.astro';
+
+Ferrari is the release where authentication stopped being two parallel designs
+and became one. The fallback got its own post; this is the one underneath it.
+[ADR-015](/docs/design/decisions/adr-015-authentication-token-ownership/) is the
+token's constitution, and the interesting thing about it is how much of it is
+deletion.
+
+## One issuer, zero mints in the pod
+
+The old arrangement had two services minting JWTs under two different names for
+what was supposed to be the same secret, and a worker that could verify a token
+and, because it held the same shared secret, also *make* one. A pod that could
+check a token could forge one for every workspace. That's a consequence of
+symmetric signing, where verifying and minting are the same operation — not a
+defect in any one flow.
+
+Control is now the sole minter. The workspace server's `WorkerTokenIssuer` is
+gone, the `ws_token` endpoint is gone, the legacy format branch in the worker is
+gone. One issuer, one format, one place to reason about who is allowed to say
+who they are.
+
+## Signing went asymmetric
+
+The shared secret became an RSA keypair. Control holds the private half; every
+pod verifies against a public JWKS endpoint it fetches and caches. A pod can
+prove a token is real without ever being able to make one.
+
+That's the whole security argument in one sentence: verification and minting
+stopped being the same privilege. The keypair itself joined the deploy path —
+`deploy.rb` mints it once and stores it as a Kubernetes Secret, and the public
+half is what gets published. The signing key is the one thing that stays a
+Secret rather than a settings column, because a key that can mint is not
+configuration in the same sense as a TTL.
+
+## Identity got typed
+
+The token's subject and audience became `user:<uuid>` and `workspace:<uuid>`.
+There's a whole post about why that happened; the short version is two databases
+both calling a column `user_id` and meaning different things. The integers left
+the token in the same window as the handshake cutover, because there was no
+installed base to stage for.
+
+## The ceiling
+
+Login tokens renew without a password, but not forever. Renewal preserves
+`auth_time` — the original login moment — and re-signs a fresh expiry. Once
+`now - auth_time` passes seven days, renewal is refused and the only path is a
+full login. Sliding, but bounded.
+
+The TTL stopped being an env var and became a settings column, so TTL and the
+ceiling change without a redeploy. That's a real control-plane surface now, not
+a rename: a `Setting` model, a settings API, a pane in the dashboard.
+
+## What's left
+
+The authorization model — who may patch a workspace, who may read what — is the
+next layer and it is deliberately not this one. ADR-015 gives the token a stable
+identity and a single minting authority, which is exactly the property every
+future authorization decision needs to lean on. It doesn't decide what anyone is
+allowed to do; it decides who they are, and who's allowed to say it.

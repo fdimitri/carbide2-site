@@ -1,0 +1,88 @@
+---
+title: "Ferrari is out"
+description: "CARB/IDE2 v0.5.0-ferrari: the auth stack changed shape — control mints, pods verify, no token ever touches a URL — plus passkeys and a real workspace-config surface, with four ADRs drawing the forward arc."
+pubDate: 2026-08-30
+author: 'Chip'
+editor: 'FrankD'
+tags: ['release', 'authentication', 'jwt', 'websocket', 'capabilities']
+draft: true
+---
+
+import FrankD from '@/components/ui/FrankD.astro';
+
+[`v0.5.0-ferrari`](https://github.com/fdimitri/carbide2/releases/tag/v0.5.0-ferrari)
+is tagged. The last release made the agent and the workspace usable. This one is
+the layer underneath: who may say who they are, and whether a workspace can be
+changed without a `kubectl patch`.
+
+A token used to arrive in a URL and be minted by two different services under
+two different names for the same secret. Now it doesn't. On top of that fixed
+handshake sit passkeys and a workspace-configuration surface.
+
+## The hard cutover
+
+For its whole life the worker took its JWT in the WebSocket URL, which meant the
+token landed in every access log between the browser and the pod. [The dual path
+that was supposed to ease the transition couldn't actually fall
+back](/blog/the-fallback-we-decided-not-to-keep), and the answer was to delete
+it: no `?token=` shim, no deprecation window, first frame is `system/auth`. The
+token travels in a frame, which access logs never see.
+
+## Control mints, pods verify
+
+[The token's constitution](/docs/design/decisions/adr-015-authentication-token-ownership/)
+is ADR-015: control is the sole minter, workspaces verify and never mint, and
+signing is asymmetric so a pod that can check a token can't forge one. The
+server-minted path and the shared secret came out. Identity stopped being
+pod-local integers and [became typed UUIDs](/blog/uuids-everywhere) — same
+reason every id collision this release happened, wearing a PEM or a number.
+
+## Passkeys
+
+Passkeys shipped as a second credential on the login screen. Username-first and
+non-resident — the shape that works on a YubiKey without eating one of its
+limited resident slots. The control side is `webauthn-ruby` plus two small
+tables (a credential record and a one-time challenge) and two ceremonies:
+register a key, then assert it. The client gets a passkey button on login and a
+management surface in the control settings to add or remove keys.
+
+The part that matters is what passkeys don't change. They terminate in the same
+login token 015 just rebuilt, so none of the workspace-token, worker-auth, or
+handshake work downstream knows the difference. One more way to get the token;
+zero new token shapes.
+
+## Workspace shape gets a surface
+
+A workspace stopped being something you hand-patch on the cluster. [The shape,
+the surface, and the rough way to configure it](/blog/workspace-shape-surface-config)
+have their own post. Short version: patch vs migration, `PATCH` vs `roll`, and a
+config modal that's one-workspace-at-a-time.
+
+## The four ADRs drawing the forward arc
+
+**[ADR-019](/docs/design/decisions/adr-019-commandset-caps-versioning/)** retires
+the wire-protocol integer for per-function SemVer capabilities. Major is the only
+thing compared.
+
+**[ADR-020](/docs/design/decisions/adr-020-decider-capability-resolution/)** makes
+the Decider real: two capsets compared into three arrays, graded into four
+states. The picker selects a grade, not a pile of SHAs.
+
+**[ADR-022](/docs/design/decisions/adr-022-adversarial-agent-agenda/)** proposes
+making the "second model told to find defects" trick a first-class thing. Least
+implementable, possibly most useful.
+
+**[ADR-024](/docs/design/decisions/adr-024-multi-stream-worker/)** splits the
+single worker socket into per-domain sockets so a blocked agent conversation
+can't stall terminals and chat.
+
+## The line in the sand
+
+Still `0.x`. The capability system exists on paper and in the first registries,
+but the emitter half and the Decider's grade math aren't wired. The worker still
+multiplexes one socket. The authorization model — ADR-017 — is the next big
+thing, deliberately deferred to 0.6.0.
+
+What changed is the foundation: one minting authority, one handshake, one token
+format, a second credential, and a workspace that configures itself from its own
+API instead of a kubectl patch.

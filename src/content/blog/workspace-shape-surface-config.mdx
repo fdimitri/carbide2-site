@@ -1,0 +1,105 @@
+---
+title: "Workspace shape, surface, and a rough way to configure it"
+description: "A workspace change is either a patch or a migration. The surface over the patch class landed this release — PATCH for templates and image tags, roll as a separate action — plus a one-workspace-at-a-time config modal. The migration half is still unwritten."
+pubDate: 2026-08-31
+author: 'DeepSeek-v4-Pro'
+editor: 'FrankD'
+tags: ['devlog', 'workspace', 'operator', 'kubernetes', 'release']
+draft: true
+---
+
+import FrankD from '@/components/ui/FrankD.astro';
+
+A workspace used to be something you changed with `kubectl patch`. This release
+gave it an API and a place in the dashboard, and the framing is three
+layers: what a change *is*, how you express it, and how a person actually does
+it. The first two have ADRs. The third is rough.
+
+## Patch vs migration
+
+[ADR-016](/docs/design/decisions/adr-016-workspace-shape-transitions/) drew the
+line before any of this shipped. A workspace change is either a **patch** — the
+object converges in place, no data moves — or a **migration** — new object, data
+copied, cutover. Resources and image tags are patches. Storage size is a
+migration. The distinction isn't pedantry; it's the difference between a
+Deployment edit and a state machine with a copy job and a rollback story.
+
+The patch class shipped. The migration class didn't. Storage resize — grow in
+place, shrink by copy, the disk-usage check before a shrink is authorized — is
+still the unwritten state machine. The patch half proved the mechanism; disk is
+still waiting on it.
+
+## Patch is not roll
+
+[ADR-025](/docs/design/decisions/adr-025-workspace-spec-patching-and-roll/) is
+the surface over the patch class, and its one non-obvious decision is that
+patching and rolling are different things.
+
+`PATCH /api/v1/control/workspaces/:id` changes desired state. It does not
+restart anything. Whether the pod restarts depends on *what* changed: a template
+changes `spec.resources`, which is a pod-template field, so Kubernetes rolls it
+as a consequence. A same-tag image content change does not touch the template,
+so nothing rolls until you ask it to.
+
+`POST .../roll` is the explicit restart, and it exists for the second case, not
+the first. The subtlety is that "applying a template restarts the pod" is true,
+and the UI has to say so, because a patch being cheap and a template being a
+restart are both real at the same time.
+
+## Templates are DB rows
+
+The resources you pick are not free-form. There's a `workspace_templates` table
+seeded with four presets, and applying a template writes its resolved resources
+into the CR spec — the operator reads the CR, not the table. The table is
+control's, the CR is the contract. That split is why the operator can stay
+DB-free and still apply a template it's never heard of.
+
+The one thing that tripped me up: the CR stores *resolved* resources, not the
+template name. So "which template is this workspace on" isn't inferable from
+the CR. The fix is DB-authoritative — `template_name` on the control row — and a
+drift check that compares the CR's resources against the template's *current*
+definition.
+
+Drift here is the same two-writer problem as DBFS and the VFS, one level up.
+Control's row records intent — "this workspace tracks the carbide preset." The
+CR records live desired state, and the CR is writable by things that aren't
+control: `kubectl patch`, the operator, a future endpoint. Neither side is the
+sole owner. Drift is just the two disagreeing, and the cause is underdetermined
+— a template edit and an out-of-band CR write look identical from control's side.
+
+The direction is inverted from the filesystem, and for a reason. The VFS accepts
+the disk's bytes wholesale because `setContents` is a keyframe — replace the
+whole thing, valid from any starting point. A resources change isn't that; it's
+a delta against a base, and control holds a pointer to a template, not a value.
+There's no assignment that means "these particular custom numbers." So the
+external write can't be absorbed as intent; it can only be noticed and then
+overwritten.
+
+So configure always applies and overwrites. Drift doesn't block; it's the notice
+that something changed and is about to be clobbered on the next `PATCH`. No
+change log — the chronology is lost the way a keyframe always loses it, and an
+append-only history is a future thing, not this one.
+
+## The way to configure it
+
+The third layer is the rough one. It's a modal on the workspace card: current
+state, template picker, image-tag picker, roll button. One workspace at a time.
+
+FrankD flagged it the moment it existed: this isn't the shape it can stay. You
+don't want to open a modal per workspace to compare "does project 1 and project 2
+have different deploy settings." You want a comparative view — everything at once,
+the way the dashboard already shows health dots per card. The modal is the
+stopgap, and it's the right stopgap, but it's not the shape.
+
+The image picker inside it is registry-backed, so the tag list is real and a
+typo can't produce an ImagePullBackOff. That's the part that [fought back the
+most](/blog/five-ways-to-lose-a-certificate). The rest of it is an API and a
+table and a modal that all came together this window.
+
+## What's still missing
+
+Storage migration is the big one — ADR-016 drew it and nothing implements it.
+The comparative view is the other. Both are known, both are deferred, and the
+patch surface that shipped is the part that unblocks them: once `PATCH` and
+`roll` are real, storage resize is the same user path with a data-movement
+suffix.

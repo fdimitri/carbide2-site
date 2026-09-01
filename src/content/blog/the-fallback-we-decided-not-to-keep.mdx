@@ -1,0 +1,72 @@
+---
+title: "The fallback we decided not to keep"
+description: "First-message auth was designed with a ?token= fallback kept alive for a 60-day window, and the dual path got built before anyone asked whether the fallback could even work. FrankD decided it couldn't, and the fallback got deleted instead of shipped."
+pubDate: 2026-08-31
+author: 'DeepSeek-v4-Pro'
+editor: 'FrankD'
+tags: ['devlog', 'authentication', 'websocket', 'jwt', 'release']
+draft: true
+---
+
+import FrankD from '@/components/ui/FrankD.astro';
+
+The first-message auth design shipped as a transition, and then the transition
+got deleted before the release, and the reason it got deleted is that someone
+finally looked at whether it could work.
+
+ADR-018 said: move the token out of the WebSocket URL and into a `system/auth`
+first frame, but keep a `?token=` fallback alive for a sixty-day window so old
+clients keep working while new ones roll out. The worker gained the new path
+with the old shim still accepted. The client preferred the new path and fell
+back on failure. It was built. It was the design.
+
+## The frame that couldn't inform the choice
+
+The dual path had a discovery mechanism: the worker sends an on-open
+`system/wirecaps` frame listing which auth carriers it accepts, and the client
+reads it to decide between `?token=` and `system/auth`. The problem is when that
+frame arrives. It arrives after the socket is already open, which is after the
+client has already composed the upgrade URL, which is where the `?token=` choice
+gets made.
+
+So the frame that was supposed to tell the client which carrier to use shows up
+one step too late to inform the one decision it existed for. FrankD walked it
+through: a client can't learn `wire.uriauth` from a frame it can only receive
+after it has already connected, and it can't connect to an old uri-auth worker
+any other way. The only signal for "this worker needs the old path" is the
+*absence* of the frame, which is indistinguishable from a slow worker.
+
+A fallback is fine in the abstract. The question is whether the fallback can
+actually fall back. This one couldn't, not cleanly — the only way to reach an
+old worker was to already know it was old.
+
+## Decided: no
+
+The decision to delete it was FrankD's, and it was short. No dual path, a hard
+switchover, delete every client from before the change. Remove the server-minted
+JWT entirely; only control mints, the worker accepts only control format, the
+client asks only control.
+
+The reasoning was the same one that kept showing up all window: there is no
+installed base to protect. A sixty-day compatibility window was buying time for
+a population that does not exist. The shim was keeping the token in the
+access-log path for the entire transition, and it was protecting nobody.
+
+So ADR-018 became the answer we rejected, and ADR-023 became the one we shipped:
+one handshake, one format, no fallback, and the pre-cutover builds deleted
+rather than carried. The fallback code got taken back out, and the only trace of
+it is that ADR-018 is still in the docs, marked superseded.
+
+## What it cost
+
+There's one real downside, and it's worth being plain about. A hard cutover has no
+rollback that isn't a revert-and-redeploy. If the new handshake had a defect
+that only showed at fleet scale, there was no old path to flip back to. The dual
+path existed precisely to hedge that, and the hedge got removed because the
+thing it hedged against was cheaper to fix by redeploying than by carrying a
+second auth path forever.
+
+It also made the wirecaps frame pointless, and it got removed with the fallback.
+Once there's one carrier, there's nothing to discover, so the frame had no job.
+That's the shape of the whole change: not adding a second path, but noticing the
+first path was carrying machinery for a second path that could never fire.
